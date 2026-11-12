@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Schachkakh</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♞</text></svg>">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Anmeldung -->
+  <section id="auth" class="screen">
+    <div class="auth-card">
+      <div class="logo">♞ Schachkakh</div>
+      <p class="tagline">Gewertet spielen. Aufsteigen. Skins freischalten.</p>
+      <div class="tabs auth-tabs">
+        <button data-auth="login" class="active">Anmelden</button>
+        <button data-auth="register">Registrieren</button>
+      </div>
+      <form id="auth-form">
+        <input name="name" placeholder="Spielername" autocomplete="username" required minlength="3" maxlength="16">
+        <input name="password" type="password" placeholder="Passwort" autocomplete="current-password" required minlength="6">
+        <button class="btn primary big" type="submit">Los geht's</button>
+        <p class="error" id="auth-error"></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- Hauptanwendung -->
+  <section id="app" class="screen hidden">
+    <header class="topbar">
+      <div class="logo small">♞ Schachkakh</div>
+      <nav class="tabs" id="nav">
+        <button data-view="play" class="active">Spielen</button>
+        <button data-view="pass">Battlepass</button>
+        <button data-view="shop">Shop</button>
+        <button data-view="leaderboard">Rangliste</button>
+        <button data-view="profile">Profil</button>
+      </nav>
+      <div class="stats">
+        <span class="chip" title="Elo"><b id="me-elo">1200</b> <small id="me-rank">Gold</small></span>
+        <span class="chip coins" title="Münzen">🪙 <b id="me-coins">0</b></span>
+        <span class="chip" title="Battlepass-Stufe">🎖️ <b id="me-tier">0</b></span>
+      </div>
+    </header>
+
+    <main>
+      <!-- Spielen -->
+      <div id="view-play" class="view">
+        <h1>Hallo, <span id="me-name"></span>!</h1>
+        <p class="muted" id="online-count"></p>
+        <div class="cards">
+          <div class="card highlight">
+            <h2>🏆 Gewertet online</h2>
+            <p class="muted">Matchmaking nach Elo. Doppelte XP-Boni.</p>
+            <div class="seg" id="tc-select">
+              <button data-tc="1+0">1 min</button>
+              <button data-tc="3+2" class="active">3+2</button>
+              <button data-tc="5+0">5 min</button>
+              <button data-tc="10+0">10 min</button>
+            </div>
+            <button class="btn primary big" id="btn-queue">Gegner suchen</button>
+            <p class="queue-info hidden" id="queue-info"><span class="spinner"></span> Suche läuft… <span id="queue-time">0</span>s
+              <button class="btn small" id="btn-unqueue">Abbrechen</button></p>
+          </div>
+          <div class="card">
+            <h2>🤖 Gegen KI</h2>
+            <p class="muted">Vier Stufen – vom Anfänger bis zum Großmeister.</p>
+            <div class="seg" id="ai-level"></div>
+            <div class="seg" id="ai-color">
+              <button data-color="w" class="active">♔ Weiß</button>
+              <button data-color="random">🎲</button>
+              <button data-color="b">♚ Schwarz</button>
+            </div>
+            <button class="btn primary big" id="btn-ai">KI herausfordern</button>
+          </div>
+          <div class="card">
+            <h2>👥 Freund einladen</h2>
+            <p class="muted">Privater Raum mit Code. Ungewertet.</p>
+            <button class="btn" id="btn-room">Raum erstellen</button>
+            <p class="room-code hidden" id="room-code"></p>
+            <div class="row">
+              <input id="join-code" placeholder="Code" maxlength="6">
+              <button class="btn" id="btn-join">Beitreten</button>
+            </div>
+          </div>
+          <div class="card">
+            <h2>🪑 Lokal</h2>
+            <p class="muted">Zu zweit an einem Gerät. Ohne Belohnungen.</p>
+            <button class="btn big" id="btn-local">Starten</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Partie -->
+      <div id="view-game" class="view hidden">
+        <div class="game-layout">
+          <div class="board-wrap">
+            <div class="player-bar" id="bar-top"><span class="pname"></span><span class="clock"></span></div>
+            <div id="board" class="board"></div>
+            <div class="player-bar" id="bar-bottom"><span class="pname"></span><span class="clock"></span></div>
+          </div>
+          <aside class="side">
+            <div class="status" id="game-status"></div>
+            <div class="moves" id="moves"></div>
+            <div class="draw-offer hidden" id="draw-offer">
+              Remis angeboten. <button class="btn small primary" id="btn-accept-draw">Annehmen</button>
+              <button class="btn small" id="btn-decline-draw">Ablehnen</button>
+            </div>
+            <div class="controls">
+              <button class="btn" id="btn-flip" title="Brett drehen">⇅ Drehen</button>
+              <button class="btn" id="btn-draw">½ Remis</button>
+              <button class="btn danger" id="btn-resign">🏳 Aufgeben</button>
+              <button class="btn primary hidden" id="btn-back">Zurück zur Lobby</button>
+            </div>
+            <div class="chat hidden" id="chat">
+              <div class="chat-log" id="chat-log"></div>
+              <form id="chat-form"><input id="chat-input" placeholder="Nachricht…" maxlength="200"></form>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <!-- Battlepass -->
+      <div id="view-pass" class="view hidden">
+        <div class="pass-head">
+          <div>
+            <h1 id="season-name"></h1>
+            <p class="muted">Sammle XP in jeder Partie und schalte Belohnungen frei.</p>
+          </div>
+          <div class="pass-progress">
+            <div>Stufe <b id="pass-tier">0</b> / <span id="pass-max">30</span></div>
+            <div class="bar"><div class="fill" id="pass-fill"></div></div>
+            <small class="muted" id="pass-xp"></small>
+          </div>
+          <button class="btn gold" id="btn-premium"></button>
+        </div>
+        <div class="pass-track" id="pass-track"></div>
+      </div>
+
+      <!-- Shop -->
+      <div id="view-shop" class="view hidden">
+        <h1>Shop & Sammlung</h1>
+        <h2>Bretter</h2>
+        <div class="skin-grid" id="shop-board"></div>
+        <h2>Figuren</h2>
+        <div class="skin-grid" id="shop-pieces"></div>
+      </div>
+
+      <!-- Rangliste -->
+      <div id="view-leaderboard" class="view hidden">
+        <h1>Rangliste</h1>
+        <table class="table" id="lb-table">
+          <thead><tr><th>#</th><th>Spieler</th><th>Elo</th><th>Rang</th><th>S/R/N</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Profil -->
+      <div id="view-profile" class="view hidden">
+        <h1 id="profile-name"></h1>
+        <div class="cards" id="profile-stats"></div>
+        <h2>Letzte Online-Partien</h2>
+        <table class="table" id="history-table">
+          <thead><tr><th>Gegner</th><th>Ergebnis</th><th>Grund</th><th>Elo</th><th>Zeit</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <button class="btn" id="btn-logout">Abmelden</button>
+      </div>
+    </main>
+  </section>
+
+  <!-- Dialoge -->
+  <div class="modal hidden" id="modal">
+    <div class="modal-card" id="modal-card"></div>
+  </div>
+  <div class="toast hidden" id="toast"></div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
