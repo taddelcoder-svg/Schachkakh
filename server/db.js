@@ -173,6 +173,17 @@ export function gamesOf(userId, limit = 30) {
   return out;
 }
 
+export function recordTournament(t) {
+  state.tournaments ||= [];
+  state.tournaments.push(t);
+  if (state.tournaments.length > 50) state.tournaments.splice(0, state.tournaments.length - 50);
+  save();
+}
+
+export function recentTournaments(n = 5) {
+  return (state.tournaments || []).slice(-n).reverse();
+}
+
 export function getGame(id) {
   return state.games.find((g) => g.id === id) || null;
 }
@@ -187,5 +198,5 @@ export function publicUser(u) {
 // Profil für andere Spieler
 export function profileOf(u) {
   if (!u) return null;
-  return { id: u.id, name: u.name, ratings: u.ratings, createdAt: u.createdAt, equipped: u.equipped };
+  return { id: u.id, name: u.name, ratings: u.ratings, createdAt: u.createdAt, equipped: u.equipped, achievements: u.achievements || {} };
 }

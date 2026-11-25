@@ -7,6 +7,9 @@ import * as db from './db.js';
 import { applyElo, applyMultiElo, applyRewards } from './progress.js';
 import { TIME_CONTROLS } from '../shared/catalog.js';
 import { FourChess, COLORS as FP_COLORS, COLOR_NAMES, botMove } from '../shared/fourchess.js';
+import { EMOTES } from '../shared/catalog.js';
+import { track, setNotifier, ensureState } from './events.js';
+import { initTournaments, onTournamentGameEnd, onTournamentMessage, unwatchTournaments } from './tournaments.js';
 
 export { TIME_CONTROLS };
 export const FP_TIME_CONTROLS = {
@@ -80,7 +83,7 @@ function onFlag(g) {
   else endGame(g, winner, 'Zeit abgelaufen');
 }
 
-function startGame(userA, userB, tc, ranked, colors = null) {
+function startGame(userA, userB, tc, ranked, colors = null, extra = {}) {
   const [white, black] = colors || (Math.random() < 0.5 ? [userA, userB] : [userB, userA]);
   const t = TIME_CONTROLS[tc];
   const g = {
@@ -92,6 +95,7 @@ function startGame(userA, userB, tc, ranked, colors = null) {
     drawOffer: null, rematch: new Set(), takeback: null,
     over: false, startedAt: Date.now(),
     disconnectTimers: {}, spectators: new Set(),
+    tournamentId: extra.tournamentId || null, tournamentName: extra.tournamentName || null, lastEmote: {},
   };
   g.chess.header('White', white.name, 'Black', black.name, 'Event', ranked ? 'Schachkakh gewertet' : 'Schachkakh',
     'Date', new Date().toISOString().slice(0, 10).replace(/-/g, '.'), 'TimeControl', tc);
@@ -117,6 +121,7 @@ function gameStateMsg(g, userId) {
     tc: g.tc, ranked: g.ranked, ratingType: g.type,
     pgn: g.chess.pgn(), fen: g.chess.fen(),
     clocks: clocksNow(g), clockRunning: g.clock.running, over: g.over,
+    tournamentId: g.tournamentId, tournamentName: g.tournamentName,
   };
 }
 
@@ -145,12 +150,22 @@ function endGame(g, result, reason) {
     });
   }
 
+  const tour = g.tournamentId ? onTournamentGameEnd(g, result, white, black) : null;
+  if (result !== 'aborted') {
+    const plies = g.chess.history().length;
+    const mate = g.chess.isCheckmate();
+    for (const [color, user] of [['w', white], ['b', black]]) {
+      const res = result === 'draw' ? 'draw' : result === color ? 'win' : 'loss';
+      track(user, 'game', { kind: '2p', online: true, result: res, type: g.type, plies, mate, tournament: !!g.tournamentId, ranked: g.ranked });
+    }
+  }
   for (const [color, user] of [['w', white], ['b', black]]) {
     sendUser(user.id, {
       type: 'game_over', gameId: g.id, result, reason,
       eloChange: elo ? elo[color === 'w' ? 'white' : 'black'] : null,
       newElo: user.ratings[g.type].elo,
       rewards: rewards[color] || null,
+      tournament: g.tournamentId ? { id: g.tournamentId, name: g.tournamentName, ...(tour?.[color] || {}) } : null,
       user: db.publicUser(user),
     });
     userGame.delete(user.id);
@@ -363,6 +378,7 @@ function fpEnd(g) {
     const res = h.place === 1 ? 'win' : h.place === 2 ? 'draw' : 'loss';
     h.rewards = applyRewards(h.user, res, g.ranked ? 'ranked' : 'casual');
     h.delta = deltas ? deltas[i] : null;
+    track(h.user, 'game', { kind: '4p', result: res, place: h.place, plies: g.moves.length, ranked: g.ranked });
   });
   db.recordGame({
     id: g.id, kind: '4p', ranked: g.ranked, tc: g.tc, endedAt: Date.now(), reason: g.fc.endReason,
@@ -505,7 +521,25 @@ function onMessage(user, ws, msg) {
   }
   if (g && !g.over && g.kind === '4p' && ['fp_move', 'resign'].includes(msg.type)) return on4pMessage(user, g, msg);
 
+  if (onTournamentMessage(user, ws, msg)) return;
+
   switch (msg.type) {
+    case 'emote': {
+      const target = g || [...games.values()].find((x) => x.spectators.has(ws));
+      const e = Number(msg.e);
+      if (!target || !EMOTES[e]) break;
+      const now = Date.now();
+      if (now - (target.lastEmote?.[user.id] || 0) < 1500) break;
+      (target.lastEmote ||= {})[user.id] = now;
+      let color = null;
+      if (target.kind === '2p') color = target.white === user.id ? 'w' : target.black === user.id ? 'b' : null;
+      else color = fpSeatOf(target, user.id)?.color || null;
+      const out = { type: 'emote', gameId: target.id, from: user.name, color, e };
+      if (target.kind === '2p') { sendUser(target.white, out); sendUser(target.black, out); }
+      else for (const s of target.seats) if (s.userId) sendUser(s.userId, out);
+      sendWatchers(target, out);
+      break;
+    }
     case 'queue': {
       if (busy()) return;
       if (!TIME_CONTROLS[msg.tc]) return send(ws, { type: 'error', message: 'Unbekannte Bedenkzeit' });
@@ -609,6 +643,7 @@ function onMessage(user, ws, msg) {
     case 'rematch': {
       const old = games.get(msg.gameId);
       if (!old || !old.over || old.kind !== '2p' || (old.white !== user.id && old.black !== user.id)) return;
+      if (old.tournamentId) return send(ws, { type: 'error', message: 'Im Turnier wird automatisch neu gepaart' });
       const opp = old.white === user.id ? old.black : old.white;
       if (busy()) return;
       old.rematch.add(user.id);
@@ -681,6 +716,14 @@ function onDisconnect(user) {
 }
 
 export function attachWebSocket(server) {
+  setNotifier((userId, notes) => {
+    if (sockets.has(userId)) sendUser(userId, { type: 'notify', notes });
+    else { const u = db.getUser(userId); if (u) { u.pendingNotes = [...(u.pendingNotes || []), ...notes].slice(-20); db.save(); } }
+  });
+  initTournaments({
+    startGame: (w, b, tc, ranked, extra) => startGame(null, null, tc, ranked, [w, b], extra),
+    isOnline, inGame: (id) => userGame.has(id), sendUser, sendWs: send,
+  });
   const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
 
   wss.on('connection', (ws) => {
@@ -700,6 +743,8 @@ export function attachWebSocket(server) {
         if (!sockets.has(user.id)) sockets.set(user.id, new Set());
         sockets.get(user.id).add(ws);
         send(ws, { type: 'auth_ok', online: sockets.size });
+        ensureState(user);
+        if (user.pendingNotes?.length) { send(ws, { type: 'notify', notes: user.pendingNotes }); user.pendingNotes = []; db.save(); }
         // Wiederverbinden mit laufender Partie
         const g = games.get(userGame.get(user.id));
         if (g && !g.over) {
@@ -719,6 +764,7 @@ export function attachWebSocket(server) {
     ws.on('close', () => {
       clearTimeout(authTimeout);
       for (const g of games.values()) g.spectators.delete(ws);
+      unwatchTournaments(ws);
       if (!user) return;
       const set = sockets.get(user.id);
       set?.delete(ws);

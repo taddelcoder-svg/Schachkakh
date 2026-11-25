@@ -5,8 +5,17 @@ import { COLORS as FP_ORDER } from '/shared/fourchess.js';
 import { openingName } from '/shared/openings.js';
 import {
   BOARD_SKINS, PIECE_SKINS, BATTLEPASS, SEASON, XP_PER_TIER, MAX_TIER, AI_LEVELS,
-  RATING_TYPES, TIME_CONTROLS, tierFromXp, rankName,
+  RATING_TYPES, TIME_CONTROLS, tierFromXp, rankName, QUESTS, ACHIEVEMENTS, EMOTES, ARENA_PRIZES,
 } from '/shared/catalog.js';
+
+const VERSION = '1.3';
+const WHATS_NEW = [
+  ['🏟️', 'Arena-Turniere', 'Jede halbe Stunde: Blitz- und Bullet-Arena mit automatischen Paarungen, 🔥 Serienbonus und Münzpreisen für die Top 3.'],
+  ['📋', 'Tagesaufgaben', 'Jeden Tag drei neue Aufgaben – alle geschafft gibt es einen Extra-Bonus.'],
+  ['📆', 'Login-Bonus', 'Komm jeden Tag vorbei: bis zu 70 Münzen pro Tag für deine Serie.'],
+  ['🏅', 'Erfolge', '25 Erfolge mit Münz-Belohnungen – zu sehen in deinem Profil.'],
+  ['😂', 'Emotes', 'Reagiere in Online-Partien mit Emotes (abschaltbar in den Einstellungen).'],
+];
 
 // ======================================================================
 // Hilfsfunktionen
@@ -77,7 +86,7 @@ function confirmBox(title, yes, onYes, danger = true) {
 // ======================================================================
 // Einstellungen & Sound
 // ======================================================================
-const DEFAULT_SETTINGS = { sound: true, coords: true, autoQueen: false, premoves: true, animation: true, highlight: true, confirmResign: true };
+const DEFAULT_SETTINGS = { sound: true, coords: true, autoQueen: false, premoves: true, animation: true, highlight: true, confirmResign: true, emotes: true };
 const settings = () => ({ ...DEFAULT_SETTINGS, ...(me?.settings || {}) });
 
 let audio;
@@ -118,7 +127,7 @@ $('#btn-settings').addEventListener('click', () => {
   const items = [
     ['sound', '🔊 Sound'], ['coords', '🔤 Koordinaten anzeigen'], ['animation', '🎞 Zug-Animation'],
     ['highlight', '🟨 Letzten Zug hervorheben'], ['premoves', '⏩ Vorzüge (Premoves) online'],
-    ['autoQueen', '♛ Automatisch zur Dame umwandeln'], ['confirmResign', '🏳 Aufgeben bestätigen'],
+    ['autoQueen', '♛ Automatisch zur Dame umwandeln'], ['confirmResign', '🏳 Aufgeben bestätigen'], ['emotes', '😂 Emotes anzeigen'],
   ];
   modal([
     h('h2', {}, '⚙️ Einstellungen'),
@@ -186,6 +195,8 @@ $('#auth-form').addEventListener('submit', async (e) => {
     me = data.user;
     setMe(data.user);
     enterApp();
+    // Login-Bonus gibt es beim ersten Laden des Profils
+    api('/api/me').then((d) => afterLoginPopups(d.loginBonus)).catch(() => {});
   } catch (err) {
     $('#auth-error').textContent = err.status === 0 ? 'Server nicht erreichbar – versuch es gleich nochmal.' : err.message;
   } finally { btn.disabled = false; }
@@ -198,6 +209,23 @@ function enterApp() {
   loadDailyTeaser();
 }
 
+function afterLoginPopups(bonus) {
+  const showNews = () => {
+    if (store.get('seenVersion') === VERSION) return;
+    store.set('seenVersion', VERSION);
+    modal([h('h2', {}, `✨ Neu in Version ${VERSION}`),
+      h('div', { class: 'news-list' }, ...WHATS_NEW.map(([icon, title, text]) => h('div', { class: 'news-item' }, h('span', { class: 'news-icon' }, icon), h('div', {}, h('b', {}, title), h('p', { class: 'muted' }, text))))),
+      h('div', { class: 'actions' }, h('button', { class: 'btn primary', onclick: closeModal }, 'Los geht’s!'))]);
+  };
+  if (bonus) {
+    sfx.good();
+    modal([h('h2', {}, '📆 Tagesbonus'), h('p', { class: 'stat' }, `🪙 +${bonus.coins}`),
+      h('p', { class: 'muted' }, `${bonus.streak} ${bonus.streak === 1 ? 'Tag' : 'Tage'} in Folge. Komm morgen wieder für mehr!`),
+      h('div', { class: 'streak-row' }, ...[1, 2, 3, 4, 5, 6, 7].map((d) => h('span', { class: `streak-day ${d <= Math.min(bonus.streak, 7) ? 'on' : ''}` }, `${d * 10}`))),
+      h('div', { class: 'actions' }, h('button', { class: 'btn primary', onclick: () => { closeModal(); showNews(); } }, 'Danke!'))], { onClose: showNews });
+  } else showNews();
+}
+
 async function boot() {
   if (!token) return showScreen('auth');
   // Der Server (Render) braucht nach einer Pause manchmal bis zu einer Minute zum Aufwachen.
@@ -207,7 +235,9 @@ async function boot() {
       const data = await api('/api/me');
       me = data.user;
       setMe(data.user);
-      return enterApp();
+      enterApp();
+      afterLoginPopups(data.loginBonus);
+      return;
     } catch (err) {
       if (err.status === 401) { token = null; store.set('token', null); return showScreen('auth'); }
       $('#boot-text').innerHTML = attempt < 2 ? '<span class="spinner"></span> Verbinde…'
@@ -259,6 +289,7 @@ function show(view) {
   ({
     pass: renderPass, shop: renderShop, leaderboard: renderLeaderboard, profile: () => renderProfile(me.name),
     watch: renderWatch, friends: renderFriends, puzzles: () => startPuzzleMode(puzzleMode),
+    tournaments: renderTournaments, play: renderLobbyExtras,
   })[view]?.();
   window.scrollTo(0, 0);
 }
@@ -378,7 +409,7 @@ function wsSend(msg) {
 
 function onWsMessage(msg) {
   switch (msg.type) {
-    case 'auth_ok': $('#online-count').textContent = `${msg.online} Spieler online`; updateQueueButton(); break;
+    case 'auth_ok': $('#online-count').textContent = `${msg.online} Spieler online`; updateQueueButton(); renderLobbyExtras(); if (currentView === 'tournaments' && TOUR.selected) wsSendQuiet({ type: 'tournament_watch', id: TOUR.selected }); break;
     case 'auth_failed': token = null; store.set('token', null); location.reload(); break;
     case 'queued':
       setQueued(true, msg.kind === '4p' ? `Suche 4-Spieler-Partie (Bots ab ${msg.botFillSeconds}s)…` : `Suche Gegner (${msg.tc})…`);
@@ -427,6 +458,11 @@ function onWsMessage(msg) {
     case 'fp_update': if (FP && FP.id === msg.gameId) updateFour(msg); break;
     case 'fp_over': if (FP && FP.id === msg.gameId) fourOver(msg); break;
     case 'fp_left': if (FP) { FP.alive = false; renderFourControls(); } break;
+    case 'notify': for (const n of msg.notes) showNote(n); renderLobbyExtras(); break;
+    case 'tournaments': renderTournamentList(msg); break;
+    case 'tournament': onTournamentState(msg.t); break;
+    case 'tournament_result': onTournamentResult(msg); break;
+    case 'emote': showEmote(msg); break;
     case 'error':
       toast(msg.message, 'err');
       break;
@@ -524,6 +560,7 @@ function enterGameView() {
   mainBoard.premove = null;
   applyBoardSettings(mainBoard);
   mainBoard.orientation = G.color || 'w';
+  $('#emote-bar').classList.toggle('hidden', !(G.mode === 'online' || G.mode === 'spectate') || !settings().emotes);
   show('game');
   renderControls();
 }
@@ -547,7 +584,9 @@ function startLocalGame(opts) {
   maybeAiMove();
 }
 
+let resultTimer = null;
 function startOnlineGame(msg) {
+  clearInterval(resultTimer);
   stopAi();
   G = newGameState({ ...msg, mode: msg.spectator ? 'spectate' : 'online', color: msg.color || 'w' });
   if (msg.pgn) G.chess.loadPgn(msg.pgn);
@@ -556,7 +595,9 @@ function startOnlineGame(msg) {
   enterGameView();
   if (!msg.spectator && G.view === 0) sfx.start();
   refresh(false);
-  if (G.mode === 'online') toast(`${msg.ranked ? 'Gewertete' : 'Private'} Partie · ${TC_LABEL[msg.tc]} – du spielst ${G.color === 'w' ? 'Weiß' : 'Schwarz'}`);
+  G.tournamentId = msg.tournamentId || null;
+  G.tournamentName = msg.tournamentName || null;
+  if (G.mode === 'online') toast(`${G.tournamentId ? '🏟️ ' + G.tournamentName : msg.ranked ? 'Gewertete Partie' : 'Private Partie'} · ${TC_LABEL[msg.tc]} – du spielst ${G.color === 'w' ? 'Weiß' : 'Schwarz'}`);
 }
 
 function resyncGame(msg) {
@@ -708,7 +749,7 @@ function renderStatus() {
   else if (G.mode === 'local') s = `${side} ist am Zug${c.inCheck() ? ' – Schach!' : ''}`;
   else if (G.mode === 'spectate') s = `📺 Zuschauen · ${side} ist am Zug`;
   else s = (c.turn() === G.color ? 'Du bist am Zug' : 'Gegner ist am Zug') + (c.inCheck() ? ' – Schach!' : '');
-  if (G.mode === 'online' && !G.over) s = `${G.ranked ? '🏆' : '👥'} ${TC_LABEL[G.tc]} — ${s}`;
+  if (G.mode === 'online' && !G.over) s = `${G.tournamentId ? '🏟️' : G.ranked ? '🏆' : '👥'} ${TC_LABEL[G.tc]} — ${s}`;
   $('#game-status').textContent = s;
 }
 
@@ -722,7 +763,7 @@ function renderControls() {
   $('#btn-draw').classList.toggle('hidden', m !== 'online');
   $('#btn-resign').classList.toggle('hidden', m === 'local');
   $('#btn-resign').textContent = m === 'online' && G.chess.history().length < 2 ? '✖ Abbrechen' : '🏳 Aufgeben';
-  $('#btn-rematch').classList.toggle('hidden', !(m === 'online' || m === 'ai'));
+  $('#btn-rematch').classList.toggle('hidden', !(m === 'online' || m === 'ai') || !!G?.tournamentId);
   $('#btn-rematch').textContent = m === 'ai' ? '🔁 Nochmal' : '🔁 Revanche';
   $('#btn-analyze').classList.toggle('hidden', !!G?.analysis || G?.chess.history().length < 2);
 }
@@ -833,7 +874,7 @@ function onlineGameOver(msg) {
     return;
   }
   const mine = msg.result === G.color ? 'win' : msg.result === 'draw' ? 'draw' : msg.result === 'aborted' ? 'aborted' : 'loss';
-  showResult(mine, msg.reason, msg.rewards, msg.eloChange, null, null, msg.newElo);
+  showResult(mine, msg.reason, msg.rewards, msg.eloChange, null, null, msg.newElo, msg.tournament);
 }
 
 function finishLocal(result, reason, resigned = false) {
@@ -850,7 +891,7 @@ function finishLocal(result, reason, resigned = false) {
     .catch((e) => showResult(mine, reason, null, null, null, e.message));
 }
 
-function showResult(mine, reason, rewards, eloChange, titleOverride, note, newElo) {
+function showResult(mine, reason, rewards, eloChange, titleOverride, note, newElo, tournament = null) {
   sfx.end();
   const titles = { win: '🏆 Sieg!', loss: '💀 Niederlage', draw: '🤝 Remis', aborted: '⏹ Abgebrochen' };
   const title = titleOverride || titles[mine];
@@ -870,13 +911,32 @@ function showResult(mine, reason, rewards, eloChange, titleOverride, note, newEl
     if (rewards.tierAfter > rewards.tierBefore) lines.push(h('div', { class: 'reward-line glow' }, h('span', {}, '🎉 Neue Stufe!'), h('b', {}, `Stufe ${rewards.tierAfter}`)));
   }
   if (note) lines.push(h('p', { class: 'muted' }, note));
+  if (tournament) {
+    lines.unshift(h('div', { class: 'reward-line glow' }, h('span', {}, `🏟️ ${tournament.name}`),
+      h('b', {}, tournament.pts != null ? `+${tournament.pts}${tournament.fire ? ' 🔥' : ''} · Platz ${tournament.rank}` : 'gewertet')));
+    const back = h('button', { class: 'btn primary big' }, '🏟️ Zurück zum Turnier');
+    let left = 5;
+    clearInterval(resultTimer);
+    resultTimer = setInterval(() => { left--; back.textContent = `🏟️ Zurück zum Turnier (${left})`; if (left <= 0) back.click(); }, 1000);
+    back.onclick = () => {
+      clearInterval(resultTimer);
+      closeModal();
+      if (G && !G.over) return; // nächste Partie läuft schon
+      G = null;
+      openTournament(tournament.id);
+    };
+    modal([h('h2', {}, title), h('p', { class: 'muted' }, reason), ...lines, back,
+      h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => { clearInterval(resultTimer); closeModal(); } }, 'Brett ansehen'))],
+      { onClose: () => clearInterval(resultTimer) });
+    return;
+  }
   const actions = h('div', { class: 'actions wrap' },
     h('button', { class: 'btn', onclick: closeModal }, 'Brett ansehen'));
   if (G.chess.history().length >= 2) actions.append(h('button', { class: 'btn gold', onclick: () => { closeModal(); startAnalysis(); } }, '🔍 Analyse'));
   if (G.mode === 'ai') actions.append(h('button', { class: 'btn primary', onclick: () => { closeModal(); startLocalGame({ mode: 'ai', color: G.color, level: G.level }); } }, 'Nochmal'));
   else if (G.mode === 'online' && mine !== 'aborted') actions.append(h('button', { class: 'btn primary', onclick: () => { closeModal(); wsSend({ type: 'rematch', gameId: G.id }); } }, '🔁 Revanche'));
   actions.append(h('button', { class: 'btn', onclick: () => { closeModal(); backToLobby(); } }, 'Lobby'));
-  modal([h('h2', {}, title), h('p', { class: 'muted' }, reason), ...lines, actions]);
+  modal([h('h2', {}, title), h('p', { class: 'muted' }, reason), ...lines, actions].filter(Boolean));
 }
 
 function backToLobby() {
@@ -1111,7 +1171,8 @@ function renderFourPanel() {
       h('span', { class: 'fp-dot' }),
       h('div', { class: 'fp-name' }, h('b', {}, seat.name), h('small', {}, seat.bot ? '🤖 Bot' : seat.elo ? `${seat.elo}` : '', out ? ` · ${st.eliminatedReason[c] || 'raus'}` : '')),
       h('span', { class: 'fp-points' }, String(st.points[c])),
-      h('span', { class: 'clock' + (turn === c && !st.over ? ' active' : '') }, fmtTime(clocks[c])));
+      h('span', { class: 'clock' + (turn === c && !st.over ? ' active' : '') }, fmtTime(clocks[c])),
+      FP.emotes?.[c]?.until > Date.now() ? h('span', { class: 'emote-bubble' }, FP.emotes[c].emoji) : null);
   });
   $('#fp-players').replaceChildren(...rows);
   let s;
@@ -1565,6 +1626,10 @@ async function renderProfile(name) {
       $('#profile-stats').replaceChildren(stat('KI-Siege', aiWins), stat('Puzzle-Rush-Rekord', me.puzzles.rushBest || 0),
         stat('Rätsel-Serie', me.puzzles.best || 0), stat('Battlepass-Stufe', tierFromXp(me.pass.xp)), stat('Münzen', me.coins));
     } else $('#profile-stats').replaceChildren();
+    const achs = (own ? me.achievements : profile.achievements) || {};
+    $('#ach-title').textContent = `🏅 Erfolge (${Object.keys(achs).length}/${ACHIEVEMENTS.length})`;
+    $('#profile-achievements').replaceChildren(...ACHIEVEMENTS.map((a) => h('div', { class: `ach ${achs[a.id] ? 'got' : ''}`, title: achs[a.id] ? `Erreicht am ${fmtDate(achs[a.id])}` : 'Noch nicht erreicht' },
+      h('span', { class: 'ach-icon' }, a.icon), h('b', {}, a.name), h('small', {}, a.desc), h('small', { class: 'ach-coins' }, achs[a.id] ? '✔' : `🪙 ${a.coins}`))));
     const tbody = $('#history-table tbody');
     if (!games.length) return tbody.replaceChildren(h('tr', {}, h('td', { colspan: 6, class: 'muted' }, 'Noch keine Online-Partien')));
     tbody.replaceChildren(...games.map((g) => {
@@ -1582,6 +1647,186 @@ async function renderProfile(name) {
         h('td', { class: d == null ? 'muted' : d >= 0 ? 'pos' : 'neg' }, d == null ? 'privat' : `${d >= 0 ? '+' : ''}${d}`), h('td', {}, fmtDate(g.endedAt)));
     }));
   } catch (e) { toast(e.message, 'err'); }
+}
+
+// ======================================================================
+// Benachrichtigungen (Aufgaben & Erfolge)
+// ======================================================================
+function showNote(n) {
+  if (n.kind === 'achievement') {
+    sfx.good();
+    const t = h('div', { class: 'toast ach-toast' }, h('span', { class: 'ach-icon' }, n.icon),
+      h('div', {}, h('small', {}, '🏅 Erfolg freigeschaltet'), h('b', {}, n.text), h('small', { class: 'muted' }, `${n.desc} · 🪙 +${n.coins}`)));
+    $('#toasts').append(t);
+    setTimeout(() => t.classList.add('out'), 5000);
+    setTimeout(() => t.remove(), 5400);
+  } else {
+    toast(`${n.icon} Aufgabe erledigt: ${n.text} · 🪙 +${n.coins}${n.xp ? ` · +${n.xp} XP` : ''}`, 'quest');
+  }
+}
+
+function wsSendQuiet(msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); }
+
+// ======================================================================
+// Lobby: Tagesaufgaben & Turnier-Hinweis
+// ======================================================================
+async function renderLobbyExtras() {
+  if (currentView !== 'play') return;
+  wsSendQuiet({ type: 'tournaments' });
+  try {
+    const { quests } = await api('/api/quests');
+    const list = $('#quest-list');
+    list.replaceChildren(...quests.list.map((q) => {
+      const def = QUESTS.find((x) => x.id === q.id);
+      if (!def) return null;
+      return h('div', { class: `quest ${q.done ? 'done' : ''}` },
+        h('span', { class: 'quest-icon' }, q.done ? '✅' : def.icon),
+        h('div', { class: 'quest-body' }, h('span', {}, def.text),
+          h('div', { class: 'bar small' }, h('div', { class: 'fill', style: `width:${(q.progress / def.target) * 100}%` }))),
+        h('small', { class: 'quest-reward' }, q.done ? 'erledigt' : `${q.progress}/${def.target} · 🪙${def.coins}`));
+    }), h('small', { class: 'muted' }, quests.bonus ? '🎁 Tagesbonus abgeholt!' : '🎁 Alle drei geschafft: +50 Münzen extra'));
+    const end = new Date(); end.setUTCHours(24, 0, 0, 0);
+    const hrs = Math.max(0, Math.floor((end - Date.now()) / 3600000));
+    $('#quests-reset').textContent = `neu in ${hrs} h`;
+  } catch {}
+}
+
+// ======================================================================
+// Arena-Turniere
+// ======================================================================
+const TOUR = { selected: null, states: new Map(), list: null, offset: 0 };
+const nowServer = () => Date.now() + TOUR.offset;
+function fmtCountdown(ms) {
+  ms = Math.max(0, ms);
+  const s = Math.floor(ms / 1000);
+  return s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.floor(s / 60) % 60} min` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+function tourStatus(t) {
+  const n = nowServer();
+  if (t.status === 'upcoming') return { cls: 'upcoming', text: `Startet in ${fmtCountdown(t.startsAt - n)}` };
+  if (t.status === 'running') return { cls: 'running', text: `Läuft · noch ${fmtCountdown(t.endsAt - n)}` };
+  if (t.status === 'ending') return { cls: 'ending', text: 'Letzte Partien laufen…' };
+  return { cls: 'finished', text: 'Beendet' };
+}
+
+function renderTournaments() {
+  wsSend({ type: 'tournaments' });
+  liveTimer = setInterval(() => {
+    wsSendQuiet({ type: 'tournaments' });
+  }, 10_000);
+  if (TOUR.selected) wsSendQuiet({ type: 'tournament_watch', id: TOUR.selected });
+}
+setInterval(() => {
+  if (currentView === 'tournaments') { if (TOUR.list) renderTournamentList(TOUR.list, true); renderTournamentDetail(); }
+}, 1000);
+
+function openTournament(id) {
+  TOUR.selected = id;
+  if (currentView !== 'tournaments') navigate('tournaments');
+  wsSendQuiet({ type: 'tournament_watch', id });
+}
+
+function renderTournamentList(msg, fromTimer = false) {
+  if (!fromTimer) { TOUR.list = msg; TOUR.offset = msg.now - Date.now(); }
+  // Lobby-Hinweis
+  const next = msg.current.find((t) => t.status === 'running') || msg.current[0];
+  const teaser = $('#tourney-teaser-body');
+  if (next) {
+    const st = tourStatus(next);
+    teaser.replaceChildren(h('div', { class: 'teaser-row' },
+      h('div', {}, h('b', {}, `${next.name} · ${TC_LABEL[next.tc]}`), h('div', { class: `t-status ${st.cls}` }, st.text), h('small', { class: 'muted' }, `${next.players} Teilnehmer · Preis 🪙 ${ARENA_PRIZES[0]}`)),
+      h('button', { class: `btn ${next.joined ? '' : 'gold'}`, onclick: () => { if (!next.joined) wsSend({ type: 'tournament_join', id: next.id }); openTournament(next.id); } }, next.joined ? 'Ansehen' : 'Mitmachen')));
+  }
+  if (currentView !== 'tournaments') return;
+  const list = $('#tourney-list');
+  const card = (t, finished) => {
+    const st = finished ? { cls: 'finished', text: `Beendet · ${fmtDate(t.endsAt)}` } : tourStatus(t);
+    return h('div', { class: `t-card ${TOUR.selected === t.id ? 'active' : ''}`, onclick: () => openTournament(t.id) },
+      h('div', { class: 't-name' }, h('b', {}, t.name), h('span', { class: 'chip' }, TC_LABEL[t.tc] || t.tc)),
+      h('div', { class: `t-status ${st.cls}` }, st.text),
+      h('small', { class: 'muted' }, `👥 ${t.players}`, t.joined ? ' · ✅ angemeldet' : '', finished && t.podium?.[0] ? ` · 🥇 ${t.podium[0].name}` : ''));
+  };
+  list.replaceChildren(...[
+    h('h2', {}, 'Aktuell & demnächst'), ...TOUR.list.current.map((t) => card(t, false)),
+    TOUR.list.finished.length ? h('h2', {}, 'Zuletzt beendet') : null, ...TOUR.list.finished.map((t) => card(t, true))].filter(Boolean));
+  if (!TOUR.selected && TOUR.list.current[0]) openTournament(TOUR.list.current[0].id);
+}
+
+function onTournamentState(t) {
+  TOUR.states.set(t.id, t);
+  TOUR.offset = t.now - Date.now();
+  if (currentView === 'tournaments' && TOUR.selected === t.id) renderTournamentDetail();
+}
+
+function renderTournamentDetail() {
+  const t = TOUR.states.get(TOUR.selected);
+  const box = $('#tourney-detail');
+  if (!t) return;
+  const st = tourStatus(t);
+  const mine = t.me;
+  const actions = h('div', { class: 'row' });
+  if (t.status === 'running' || t.status === 'upcoming') {
+    if (!mine.joined || mine.paused) actions.append(h('button', { class: 'btn gold', onclick: () => wsSend({ type: 'tournament_join', id: t.id }) }, mine.joined ? '▶ Weiterspielen' : '✋ Mitmachen'));
+    else actions.append(h('button', { class: 'btn', onclick: () => wsSend({ type: 'tournament_pause', id: t.id }) }, '⏸ Pausieren'));
+  }
+  let info = '';
+  if (mine.joined && !mine.paused) {
+    if (t.status === 'upcoming') info = '✅ Du bist dabei. Bleib online – die erste Partie startet automatisch.';
+    else if (t.status === 'running') info = mine.playing ? '♟ Du spielst gerade.' : '⏳ Suche den nächsten Gegner…';
+  } else if (mine.paused) info = '⏸ Pausiert – deine Punkte bleiben erhalten.';
+  const meBox = mine.joined ? h('div', { class: 'tour-me' },
+    h('div', {}, h('small', {}, 'Platz'), h('b', {}, mine.rank ? `#${mine.rank}` : '–')),
+    h('div', {}, h('small', {}, 'Punkte'), h('b', {}, `${mine.score}${mine.fire ? ' 🔥' : ''}`)),
+    h('div', {}, h('small', {}, 'Teilnehmer'), h('b', {}, String(t.playerCount)))) : null;
+  const rows = t.standings.map((p) => h('tr', { class: p.id === me.id ? 'me' : '' },
+    h('td', {}, p.rank <= 3 && t.status === 'finished' ? ['🥇', '🥈', '🥉'][p.rank - 1] : p.rank),
+    h('td', {}, h('span', { class: 'link', onclick: () => navigate('profile', () => renderProfile(p.name)) }, p.name), p.fire ? ' 🔥' : '', p.playing ? h('small', { class: 'muted' }, ' ♟') : '', p.paused ? h('small', { class: 'muted' }, ' ⏸') : ''),
+    h('td', { class: 'muted' }, p.elo),
+    h('td', { class: 'results' }, ...p.results.map((r) => h('span', { class: `res r${r.replace('🔥', '')} ${r.includes('🔥') ? 'fire' : ''}` }, r.replace('🔥', '')))),
+    h('td', {}, h('b', {}, p.score))));
+  const podium = t.status === 'finished' && t.podium?.length ? h('div', { class: 'podium' }, ...t.podium.map((p, i) => h('div', { class: `pod p${i + 1}` }, h('span', {}, ['🥇', '🥈', '🥉'][i]), h('b', {}, p.name), h('small', {}, `${p.score} P. · 🪙 ${ARENA_PRIZES[i]}`)))) : null;
+  box.replaceChildren(...[
+    h('div', { class: 'tour-head' }, h('div', {}, h('h2', {}, `${t.name} · ${TC_LABEL[t.tc]}`), h('div', { class: `t-status ${st.cls}` }, st.text)), actions),
+    info ? h('p', { class: 'tour-info' }, info) : null, meBox, podium,
+    t.standings.length ? h('table', { class: 'table tour-table' }, h('thead', {}, h('tr', {}, h('th', {}, '#'), h('th', {}, 'Spieler'), h('th', {}, 'Elo'), h('th', {}, 'Ergebnisse'), h('th', {}, 'Punkte'))), h('tbody', {}, ...rows))
+      : h('p', { class: 'muted' }, 'Noch niemand angemeldet – sei der Erste!')].filter(Boolean));
+}
+
+function onTournamentResult(msg) {
+  sfx.end();
+  if (msg.user) setMe(msg.user);
+  api('/api/me').catch(() => {});
+  const medal = ['🥇', '🥈', '🥉'][msg.place - 1] || `${msg.place}.`;
+  modal([h('h2', {}, `🏟️ ${msg.name} beendet`), h('p', { class: 'stat' }, `${medal} Platz ${msg.place}`),
+    h('p', { class: 'muted' }, `von ${msg.players} Spielern · ${msg.score} Punkte`),
+    ...(msg.coins ? [h('div', { class: 'reward-line glow' }, h('span', {}, 'Preisgeld'), h('b', {}, `🪙 +${msg.coins}`))] : []),
+    h('div', { class: 'reward-line' }, h('span', {}, 'Battlepass-XP'), h('b', {}, `+${msg.xp}`)),
+    h('div', { class: 'actions' }, h('button', { class: 'btn primary', onclick: closeModal }, 'Super'))]);
+}
+
+// ======================================================================
+// Emotes
+// ======================================================================
+for (const id of ['#emote-bar', '#fp-emote-bar']) {
+  $(id).append(...EMOTES.map((e, i) => h('button', { class: 'emote-btn', title: 'Emote senden', onclick: () => wsSend({ type: 'emote', e: i }) }, e)));
+}
+function showEmote(msg) {
+  if (!settings().emotes) return;
+  const emoji = EMOTES[msg.e];
+  let host = null;
+  if (currentView === 'game' && G && G.id === msg.gameId && msg.color) {
+    host = $(mainBoard.orientation === msg.color ? '#bar-bottom' : '#bar-top');
+  } else if (currentView === 'fp' && FP && FP.id === msg.gameId && msg.color) {
+    (FP.emotes ||= {})[msg.color] = { emoji, until: Date.now() + 2500 };
+    renderFourPanel();
+    return;
+  }
+  if (!host) { addChat({ from: msg.from, text: emoji }); return; }
+  host.querySelector('.emote-bubble')?.remove();
+  const b = h('span', { class: 'emote-bubble' }, emoji);
+  host.append(b);
+  setTimeout(() => b.classList.add('out'), 2200);
+  setTimeout(() => b.remove(), 2600);
 }
 
 boot();

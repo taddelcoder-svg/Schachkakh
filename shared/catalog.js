@@ -120,3 +120,64 @@ export function rankName(elo) {
   if (elo >= 1000) return 'Silber';
   return 'Bronze';
 }
+
+// ---------- Tagesaufgaben ----------
+// event + match: welche Ereignisse zählen (die Prüfung läuft auf dem Server)
+export const QUESTS = [
+  { id: 'play3', text: 'Spiele 3 Partien (egal welche)', icon: '♟', target: 3, coins: 30, xp: 30 },
+  { id: 'win2', text: 'Gewinne 2 Online-Partien', icon: '🏆', target: 2, coins: 50, xp: 50 },
+  { id: 'aiStrong', text: 'Besiege den Computer ab Stufe „Experte“', icon: '🦉', target: 1, coins: 40, xp: 40 },
+  { id: 'puzzle5', text: 'Löse 5 Rätsel', icon: '🧩', target: 5, coins: 30, xp: 30 },
+  { id: 'rush10', text: 'Schaffe 10 Punkte im Puzzle Rush', icon: '⚡', target: 1, coins: 40, xp: 40 },
+  { id: 'fourp1', text: 'Spiele eine 4-Spieler-Partie', icon: '🎲', target: 1, coins: 30, xp: 30 },
+  { id: 'fourpTop2', text: 'Werde 1. oder 2. im 4-Spieler-Schach', icon: '🥈', target: 1, coins: 50, xp: 50 },
+  { id: 'bullet2', text: 'Spiele 2 Bullet-Partien online', icon: '⚡', target: 2, coins: 30, xp: 30 },
+  { id: 'daily', text: 'Löse das tägliche Rätsel', icon: '📅', target: 1, coins: 20, xp: 20 },
+  { id: 'tourney', text: 'Spiele eine Turnierpartie', icon: '🏟️', target: 1, coins: 40, xp: 40 },
+  { id: 'long', text: 'Spiele eine Partie mit mindestens 40 Zügen', icon: '⏳', target: 1, coins: 30, xp: 30 },
+];
+export const QUESTS_PER_DAY = 3;
+export const QUEST_ALL_BONUS = 50;
+
+// Login-Bonus: 10 Münzen pro Tag in Folge, höchstens 70
+export function loginBonusCoins(streak) { return 10 * Math.min(Math.max(1, streak), 7); }
+
+// ---------- Erfolge ----------
+export const ACHIEVEMENTS = [
+  { id: 'first_win', name: 'Erster Sieg', desc: 'Gewinne eine Online-Partie', icon: '🎉', coins: 25 },
+  { id: 'wins10', name: 'Siegertyp', desc: 'Gewinne 10 Online-Partien', icon: '🏅', coins: 50 },
+  { id: 'wins50', name: 'Unaufhaltsam', desc: 'Gewinne 50 Online-Partien', icon: '👑', coins: 150 },
+  { id: 'quick_mate', name: 'Blitzmatt', desc: 'Setze online in höchstens 10 Zügen matt', icon: '💥', coins: 50 },
+  { id: 'elo1400', name: 'Platin', desc: 'Erreiche 1400 Elo in Bullet, Blitz oder Schnellschach', icon: '💠', coins: 50 },
+  { id: 'elo1600', name: 'Diamant', desc: 'Erreiche 1600 Elo', icon: '💎', coins: 100 },
+  { id: 'elo1900', name: 'Meister', desc: 'Erreiche 1900 Elo', icon: '🏆', coins: 200 },
+  { id: 'ai_master', name: 'Wolfsjäger', desc: 'Besiege den Computer „Meister“', icon: '🐺', coins: 75 },
+  { id: 'ai_gm', name: 'Drachentöter', desc: 'Besiege den Computer „Großmeister“', icon: '🐉', coins: 150 },
+  { id: 'puzzle50', name: 'Taktiker', desc: 'Löse 50 gewertete Rätsel', icon: '🧩', coins: 50 },
+  { id: 'puzzle200', name: 'Rätselkönig', desc: 'Löse 200 gewertete Rätsel', icon: '🧠', coins: 150 },
+  { id: 'puzzle1600', name: 'Scharfer Blick', desc: 'Erreiche 1600 Taktik-Wertung', icon: '🎯', coins: 100 },
+  { id: 'rush15', name: 'Schnelldenker', desc: 'Schaffe 15 Punkte im Puzzle Rush', icon: '⚡', coins: 50 },
+  { id: 'rush30', name: 'Turbo-Hirn', desc: 'Schaffe 30 Punkte im Puzzle Rush', icon: '🚀', coins: 150 },
+  { id: 'fp_win', name: 'Herrscher der vier', desc: 'Gewinne eine 4-Spieler-Partie', icon: '🎲', coins: 50 },
+  { id: 'fp_wins10', name: 'Kreuzritter', desc: 'Gewinne 10 4-Spieler-Partien', icon: '⚔️', coins: 150 },
+  { id: 'tourney_play', name: 'Turnierluft', desc: 'Spiele in einem Arena-Turnier mit', icon: '🏟️', coins: 25 },
+  { id: 'tourney_podium', name: 'Aufs Treppchen', desc: 'Werde Top 3 in einem Turnier', icon: '🥉', coins: 100 },
+  { id: 'tourney_win', name: 'Turniersieger', desc: 'Gewinne ein Arena-Turnier', icon: '🏆', coins: 200 },
+  { id: 'streak7', name: 'Stammgast', desc: 'Komm 7 Tage in Folge vorbei', icon: '📆', coins: 75 },
+  { id: 'daily7', name: 'Rätsel-Routine', desc: 'Löse das tägliche Rätsel 7 Tage in Folge', icon: '📅', coins: 75 },
+  { id: 'friends5', name: 'Gesellig', desc: 'Habe 5 Freunde', icon: '👥', coins: 40 },
+  { id: 'collector', name: 'Sammler', desc: 'Besitze 8 Skins', icon: '🎨', coins: 75 },
+  { id: 'pass10', name: 'Aufsteiger', desc: 'Erreiche Battlepass-Stufe 10', icon: '🎖️', coins: 50 },
+  { id: 'pass30', name: 'Saison-Held', desc: 'Erreiche Battlepass-Stufe 30', icon: '🌟', coins: 200 },
+];
+
+// ---------- Arena-Turniere ----------
+// Jede halbe Stunde startet eine Arena (UTC-Halbstunden). Punkte: Sieg 2, Remis 1; ab 2 Siegen in Folge doppelt (🔥).
+export const ARENA_SCHEDULE = [
+  { minute: 0, name: 'Blitz-Arena', tc: '3+0', duration: 25 },
+  { minute: 30, name: 'Bullet-Arena', tc: '1+0', duration: 20 },
+];
+export const ARENA_PRIZES = [300, 150, 75];
+
+// ---------- Emotes ----------
+export const EMOTES = ['👍', '😂', '😮', '😡', '😢', '🔥', '🤝', 'GG'];

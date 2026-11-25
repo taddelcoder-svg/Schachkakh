@@ -10,6 +10,7 @@ import { attachWebSocket, onlineCount, statusOf, liveGames, currentGameOf } from
 import { GameError, applyRewards, buySkin, equipSkin, buyPremium, claimTier } from './progress.js';
 import { AI_LEVELS, RATING_TYPES, eloChange } from '../shared/catalog.js';
 import { PUZZLES } from '../shared/puzzles.js';
+import { track, claimLoginBonus, checkAchievements, ensureState } from './events.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT || 3000);
@@ -84,7 +85,9 @@ function verifyAiGame(user, { pgn, level, color, resigned }) {
 
   const stats = (user.aiStats[lvl.id] ||= { win: 0, draw: 0, loss: 0 });
   stats[result] += 1;
-  return { result, rewards: applyRewards(user, result, 'ai', lvl.id) };
+  const rewards = applyRewards(user, result, 'ai', lvl.id);
+  track(user, 'game', { kind: 'ai', result, aiLevel: lvl.id, plies });
+  return { result, rewards };
 }
 
 const NAME_RE = /^[A-Za-z0-9_äöüÄÖÜß-]{3,16}$/;
@@ -167,8 +170,13 @@ async function api(req, res, url) {
   }
 
   switch (route) {
-    case 'GET /api/me':
-      return json(res, 200, { user: db.publicUser(user), online: onlineCount(), puzzleCount: PUZZLES.length });
+    case 'GET /api/me': {
+      const loginBonus = claimLoginBonus(user);
+      return json(res, 200, { user: db.publicUser(user), online: onlineCount(), puzzleCount: PUZZLES.length, loginBonus });
+    }
+    case 'GET /api/quests':
+      ensureState(user);
+      return json(res, 200, { quests: user.quests, streak: user.daily.streak });
     case 'POST /api/logout':
       db.deleteToken((req.headers.authorization || '').slice(7));
       return json(res, 200, { ok: true });
@@ -178,7 +186,7 @@ async function api(req, res, url) {
       return json(res, 200, { games: liveGames() });
     case 'POST /api/settings': {
       const { settings } = await readBody(req);
-      const allowed = ['sound', 'coords', 'autoQueen', 'premoves', 'animation', 'highlight', 'confirmResign', 'moveStyle'];
+      const allowed = ['sound', 'coords', 'autoQueen', 'premoves', 'animation', 'highlight', 'confirmResign', 'moveStyle', 'emotes'];
       for (const k of allowed) if (settings && k in settings) user.settings[k] = settings[k];
       db.save();
       return json(res, 200, { user: db.publicUser(user) });
@@ -195,6 +203,7 @@ async function api(req, res, url) {
       user.friends.push(f.id);
       if (!f.friends.includes(user.id)) f.friends.push(user.id); // Freundschaft beidseitig
       db.save();
+      checkAchievements(user, null); checkAchievements(f, null);
       return json(res, 200, { friends: user.friends.map(friendView).filter(Boolean) });
     }
     case 'POST /api/friends/remove': {
@@ -208,6 +217,7 @@ async function api(req, res, url) {
     case 'POST /api/shop/buy': {
       const { type, id } = await readBody(req);
       buySkin(user, type, id);
+      checkAchievements(user, null);
       return json(res, 200, { user: db.publicUser(user) });
     }
     case 'POST /api/equip': {
@@ -219,8 +229,9 @@ async function api(req, res, url) {
       buyPremium(user);
       return json(res, 200, { user: db.publicUser(user) });
     case 'POST /api/battlepass/claim': {
-      const { track, tier } = await readBody(req);
-      const reward = claimTier(user, track, Number(tier));
+      const { track: passTrack, tier } = await readBody(req);
+      const reward = claimTier(user, passTrack, Number(tier));
+      checkAchievements(user, null);
       return json(res, 200, { reward, user: db.publicUser(user) });
     }
     case 'POST /api/ai-result': {
@@ -259,6 +270,7 @@ async function api(req, res, url) {
           coins = 25;
           user.coins += coins;
           user.pass.xp += 25;
+          track(user, 'daily', {});
         }
       } else if (!pz.solved.includes(id)) {
         // Nur der erste Versuch zählt für die Wertung
@@ -272,6 +284,7 @@ async function api(req, res, url) {
         pz.solved.push(id);
         if (pz.solved.length > 5000) pz.solved.splice(0, 1000);
         if (solved) { user.pass.xp += 5; coins = 2; user.coins += coins; }
+        track(user, 'puzzle', { solved: !!solved });
       }
       db.save();
       return json(res, 200, { delta, coins, rating: user.ratings.puzzle.elo, user: db.publicUser(user) });
@@ -286,6 +299,7 @@ async function api(req, res, url) {
       user.coins += coins;
       user.pass.xp += Math.min(40, s * 3);
       db.save();
+      track(user, 'rush', { score: s });
       return json(res, 200, { record, best: user.puzzles.rushBest || 0, coins, user: db.publicUser(user) });
     }
   }

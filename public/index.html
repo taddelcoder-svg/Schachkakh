@@ -40,6 +40,7 @@
       <div class="logo small">♞ Schachkakh</div>
       <nav class="tabs" id="nav">
         <button data-view="play" class="active">♟ Spielen</button>
+        <button data-view="tournaments">🏟️ Turniere</button>
         <button data-view="puzzles">🧩 Taktik</button>
         <button data-view="watch">📺 Zuschauen</button>
         <button data-view="friends">👥 Freunde</button>
@@ -67,6 +68,16 @@
         <div class="daily-teaser hidden" id="daily-teaser">
           <span>🧩 <b>Tägliches Rätsel</b> wartet auf dich · +25 Münzen</span>
           <button class="btn small gold" id="btn-daily-go">Lösen</button>
+        </div>
+        <div class="lobby-strip">
+          <div class="card quests-card" id="quests-card">
+            <div class="quests-head"><h2>📋 Tagesaufgaben</h2><small class="muted" id="quests-reset"></small></div>
+            <div class="quest-list" id="quest-list"></div>
+          </div>
+          <div class="card tourney-teaser" id="tourney-teaser">
+            <h2>🏟️ Arena-Turniere</h2>
+            <div id="tourney-teaser-body" class="muted">Lädt…</div>
+          </div>
         </div>
         <div class="cards">
           <div class="card highlight">
@@ -138,6 +149,7 @@
               <button class="btn" id="btn-flip" title="Brett drehen (F)">⇅</button>
             </div>
             <div class="offer hidden" id="offer"></div>
+            <div class="emote-bar hidden" id="emote-bar"></div>
             <div class="controls" id="game-controls">
               <button class="btn" id="btn-hint">💡 Tipp</button>
               <button class="btn" id="btn-takeback">↩ Zurück</button>
@@ -175,6 +187,7 @@
                 <li>Wer am Ende die meisten Punkte hat, gewinnt</li>
               </ul>
             </details>
+            <div class="emote-bar" id="fp-emote-bar"></div>
             <div class="controls">
               <button class="btn danger" id="btn-fp-resign">🏳 Aufgeben</button>
               <button class="btn primary hidden" id="btn-fp-back">Lobby</button>
@@ -184,6 +197,16 @@
               <form id="fp-chat-form"><input id="fp-chat-input" placeholder="Nachricht…" maxlength="200" autocomplete="off"></form>
             </div>
           </aside>
+        </div>
+      </div>
+
+      <!-- ================= Turniere ================= -->
+      <div id="view-tournaments" class="view hidden">
+        <h1>🏟️ Arena-Turniere</h1>
+        <p class="muted">Jede halbe Stunde startet eine Arena. Du wirst automatisch gepaart, sobald du frei bist. Sieg 2 Punkte, Remis 1 – ab zwei Siegen in Folge zählt alles doppelt 🔥. Die Top 3 gewinnen 300 / 150 / 75 Münzen.</p>
+        <div class="tourney-layout">
+          <div class="tourney-list" id="tourney-list"></div>
+          <div class="card tourney-detail" id="tourney-detail"><p class="muted">Wähle links ein Turnier.</p></div>
         </div>
       </div>
 
@@ -273,6 +296,8 @@
         </div>
         <div class="rating-cards" id="profile-ratings"></div>
         <div class="cards" id="profile-stats"></div>
+        <h2 id="ach-title">Erfolge</h2>
+        <div class="ach-grid" id="profile-achievements"></div>
         <h2>Letzte Partien</h2>
         <table class="table clickable" id="history-table">
           <thead><tr><th>Art</th><th>Gegner</th><th>Ergebnis</th><th>Grund</th><th>Elo</th><th>Datum</th></tr></thead>

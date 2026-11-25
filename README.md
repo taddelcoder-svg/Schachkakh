@@ -41,6 +41,10 @@ Logins halten ein Jahr (gleitend – wer spielt, bleibt angemeldet). Wenn der Se
 | **4-Spieler-Schach** | Jeder gegen jeden auf dem 14×14-Kreuzbrett, Punkte fürs Schlagen, +20 fürs Mattsetzen; gewertet online (leere Plätze nach 15 s mit Bots), gegen 3 Bots oder im privaten Raum mit Freunden |
 | **Einstellungen** | Sound, Koordinaten, Animation, Hervorhebung, Premoves, Auto-Dame, Aufgeben bestätigen |
 | **Skins & Battlepass** | 10 Bretter, 8 Figurensets, 30-stufiger Pass mit Gratis- und Premium-Spur |
+| **Arena-Turniere** | Jede halbe Stunde (UTC :00 Blitz 3+0, :30 Bullet 1+0): automatische Paarungen, Sieg 2 / Remis 1, ab 2 Siegen in Folge doppelt 🔥, Preise 300/150/75 Münzen (nur mit Punkten, unter 4 Spielern halbiert) |
+| **Tagesaufgaben** | 3 Aufgaben pro Tag, +50 Münzen wenn alle erledigt; Login-Bonus 10–70 Münzen je nach Serie |
+| **Erfolge** | 25 Erfolge mit Münz-Belohnungen, im Profil sichtbar |
+| **Emotes** | 8 schnelle Reaktionen in Online- und 4-Spieler-Partien (abschaltbar) |
 
 Belohnungen, Käufe und Wertungen werden **auf dem Server** berechnet.
 
@@ -60,6 +64,8 @@ server/index.js      HTTP-API + statische Dateien
 server/online.js     WebSocket: Matchmaking, Räume, Herausforderungen, Zuschauen, 2P- und 4P-Partien, Bots
 server/progress.js   Shop, Battlepass, Elo (auch Mehrspieler-Elo)
 server/db.js         Speicher: Supabase oder data/db.json
+server/events.js     Tagesaufgaben, Login-Bonus, Erfolge
+server/tournaments.js Arena-Turniere (Planung, Paarung, Wertung, Preise)
 shared/catalog.js    Wertungen, Bedenkzeiten, Skins, Battlepass, Elo-Formel
 shared/fourchess.js  Regel-Engine + Bot für 4-Spieler-Schach
 shared/puzzles.js    Taktik-Aufgaben (erzeugt mit npm run puzzles)
@@ -67,3 +73,7 @@ shared/openings.js   Eröffnungsnamen
 public/              Oberfläche: app.js, board.js, fourview.js, ai-worker.js, pieces.js
 test/                Unit-Tests (npm test)
 ```
+
+## Entwicklung
+
+- `ARENA_DEMO_MINUTES=2 npm start` legt sofort eine kurze Test-Arena an (startet nach 10 Sekunden).
