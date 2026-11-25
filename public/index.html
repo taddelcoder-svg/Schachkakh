@@ -4,12 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Schachkakh</title>
+  <meta name="theme-color" content="#12141c">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♞</text></svg>">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <!-- Start / Server wacht auf -->
+  <section id="boot" class="screen boot">
+    <div class="logo">♞ Schachkakh</div>
+    <p class="muted" id="boot-text"><span class="spinner"></span> Verbinde…</p>
+  </section>
+
   <!-- Anmeldung -->
-  <section id="auth" class="screen">
+  <section id="auth" class="screen hidden">
     <div class="auth-card">
       <div class="logo">♞ Schachkakh</div>
       <p class="tagline">Gewertet spielen. Aufsteigen. Skins freischalten.</p>
@@ -21,6 +28,7 @@
         <input name="name" placeholder="Spielername" autocomplete="username" required minlength="3" maxlength="16">
         <input name="password" type="password" placeholder="Passwort" autocomplete="current-password" required minlength="6">
         <button class="btn primary big" type="submit">Los geht's</button>
+        <p class="muted small-note">Du bleibst auf diesem Gerät angemeldet, bis du dich abmeldest.</p>
         <p class="error" id="auth-error"></p>
       </form>
     </div>
@@ -31,102 +39,202 @@
     <header class="topbar">
       <div class="logo small">♞ Schachkakh</div>
       <nav class="tabs" id="nav">
-        <button data-view="play" class="active">Spielen</button>
-        <button data-view="pass">Battlepass</button>
-        <button data-view="shop">Shop</button>
-        <button data-view="leaderboard">Rangliste</button>
-        <button data-view="profile">Profil</button>
+        <button data-view="play" class="active">♟ Spielen</button>
+        <button data-view="puzzles">🧩 Taktik</button>
+        <button data-view="watch">📺 Zuschauen</button>
+        <button data-view="friends">👥 Freunde</button>
+        <button data-view="pass">🎖️ Pass</button>
+        <button data-view="shop">🛒 Shop</button>
+        <button data-view="leaderboard">🏆 Rangliste</button>
+        <button data-view="profile">👤 Profil</button>
       </nav>
       <div class="stats">
-        <span class="chip" title="Elo"><b id="me-elo">1200</b> <small id="me-rank">Gold</small></span>
+        <span class="chip" title="Blitz-Elo">🔥 <b id="me-elo">1200</b></span>
         <span class="chip coins" title="Münzen">🪙 <b id="me-coins">0</b></span>
         <span class="chip" title="Battlepass-Stufe">🎖️ <b id="me-tier">0</b></span>
+        <button class="chip icon-btn" id="btn-settings" title="Einstellungen">⚙️</button>
       </div>
     </header>
+    <div class="conn-banner hidden" id="conn-banner">Verbindung unterbrochen – verbinde neu…</div>
 
     <main>
-      <!-- Spielen -->
+      <!-- ================= Spielen ================= -->
       <div id="view-play" class="view">
-        <h1>Hallo, <span id="me-name"></span>!</h1>
-        <p class="muted" id="online-count"></p>
+        <div class="hello">
+          <h1>Hallo, <span id="me-name"></span>!</h1>
+          <p class="muted" id="online-count"></p>
+        </div>
+        <div class="daily-teaser hidden" id="daily-teaser">
+          <span>🧩 <b>Tägliches Rätsel</b> wartet auf dich · +25 Münzen</span>
+          <button class="btn small gold" id="btn-daily-go">Lösen</button>
+        </div>
         <div class="cards">
           <div class="card highlight">
-            <h2>🏆 Gewertet online</h2>
-            <p class="muted">Matchmaking nach Elo. Doppelte XP-Boni.</p>
-            <div class="seg" id="tc-select">
-              <button data-tc="1+0">1 min</button>
-              <button data-tc="3+2" class="active">3+2</button>
-              <button data-tc="5+0">5 min</button>
-              <button data-tc="10+0">10 min</button>
-            </div>
+            <h2>🏆 Online gewertet</h2>
+            <p class="muted">Matchmaking nach Elo – getrennte Wertung für Bullet, Blitz und Schnellschach.</p>
+            <div class="tc-grid" id="tc-select"></div>
             <button class="btn primary big" id="btn-queue">Gegner suchen</button>
-            <p class="queue-info hidden" id="queue-info"><span class="spinner"></span> Suche läuft… <span id="queue-time">0</span>s
-              <button class="btn small" id="btn-unqueue">Abbrechen</button></p>
+            <div class="queue-info hidden" id="queue-info"><span class="spinner"></span> <span id="queue-text">Suche läuft…</span> <span id="queue-time">0</span>s
+              <button class="btn small" id="btn-unqueue">Abbrechen</button></div>
           </div>
           <div class="card">
-            <h2>🤖 Gegen KI</h2>
-            <p class="muted">Vier Stufen – vom Anfänger bis zum Großmeister.</p>
-            <div class="seg" id="ai-level"></div>
+            <h2>🎲 4-Spieler-Schach</h2>
+            <p class="muted">Jeder gegen jeden auf dem großen Kreuzbrett. Punkte fürs Schlagen, +20 fürs Mattsetzen.</p>
+            <div class="seg" id="fp-tc">
+              <button data-tc="1+10">1+10</button>
+              <button data-tc="3+2" class="active">3+2</button>
+              <button data-tc="5+5">5+5</button>
+            </div>
+            <button class="btn primary big" id="btn-fp-queue">Online spielen (gewertet)</button>
+            <div class="row">
+              <button class="btn" id="btn-fp-bots">🤖 Gegen 3 Bots</button>
+              <button class="btn" id="btn-fp-room">👥 Raum</button>
+            </div>
+          </div>
+          <div class="card">
+            <h2>🤖 Gegen Computer</h2>
+            <p class="muted">Sechs Gegner von 400 bis 2200 Elo. Mit Tipps und Zugrücknahme.</p>
+            <div class="bot-grid" id="ai-level"></div>
             <div class="seg" id="ai-color">
               <button data-color="w" class="active">♔ Weiß</button>
               <button data-color="random">🎲</button>
               <button data-color="b">♚ Schwarz</button>
             </div>
-            <button class="btn primary big" id="btn-ai">KI herausfordern</button>
+            <button class="btn primary big" id="btn-ai">Spielen</button>
           </div>
           <div class="card">
-            <h2>👥 Freund einladen</h2>
-            <p class="muted">Privater Raum mit Code. Ungewertet.</p>
-            <button class="btn" id="btn-room">Raum erstellen</button>
-            <p class="room-code hidden" id="room-code"></p>
+            <h2>👋 Mit Freunden</h2>
+            <p class="muted">Raum-Code teilen oder einen Freund direkt herausfordern (Freunde-Tab).</p>
+            <button class="btn" id="btn-room">Raum erstellen (Bedenkzeit oben)</button>
+            <div class="room-box hidden" id="room-box"></div>
             <div class="row">
-              <input id="join-code" placeholder="Code" maxlength="6">
+              <input id="join-code" placeholder="Code" maxlength="6" autocapitalize="characters">
               <button class="btn" id="btn-join">Beitreten</button>
             </div>
-          </div>
-          <div class="card">
-            <h2>🪑 Lokal</h2>
-            <p class="muted">Zu zweit an einem Gerät. Ohne Belohnungen.</p>
-            <button class="btn big" id="btn-local">Starten</button>
+            <button class="btn" id="btn-local">🪑 Lokal zu zweit</button>
           </div>
         </div>
       </div>
 
-      <!-- Partie -->
+      <!-- ================= Partie (2 Spieler) ================= -->
       <div id="view-game" class="view hidden">
         <div class="game-layout">
+          <div class="eval-wrap hidden" id="eval-wrap"><div class="eval-bar"><div class="eval-fill" id="eval-fill"></div><span id="eval-text">0.0</span></div></div>
           <div class="board-wrap">
-            <div class="player-bar" id="bar-top"><span class="pname"></span><span class="clock"></span></div>
-            <div id="board" class="board"></div>
-            <div class="player-bar" id="bar-bottom"><span class="pname"></span><span class="clock"></span></div>
+            <div class="player-bar" id="bar-top"><div><span class="pname"></span><div class="captured"></div></div><span class="clock"></span></div>
+            <div id="board"></div>
+            <div class="player-bar" id="bar-bottom"><div><span class="pname"></span><div class="captured"></div></div><span class="clock"></span></div>
           </div>
           <aside class="side">
             <div class="status" id="game-status"></div>
+            <div class="opening muted" id="opening"></div>
+            <div class="review-summary hidden" id="review-summary"></div>
             <div class="moves" id="moves"></div>
-            <div class="draw-offer hidden" id="draw-offer">
-              Remis angeboten. <button class="btn small primary" id="btn-accept-draw">Annehmen</button>
-              <button class="btn small" id="btn-decline-draw">Ablehnen</button>
+            <div class="nav-row">
+              <button class="btn" data-nav="first" title="Anfang">⏮</button>
+              <button class="btn" data-nav="prev" title="Zurück (←)">◀</button>
+              <button class="btn" data-nav="next" title="Vor (→)">▶</button>
+              <button class="btn" data-nav="last" title="Ende">⏭</button>
+              <button class="btn" id="btn-flip" title="Brett drehen (F)">⇅</button>
             </div>
-            <div class="controls">
-              <button class="btn" id="btn-flip" title="Brett drehen">⇅ Drehen</button>
+            <div class="offer hidden" id="offer"></div>
+            <div class="controls" id="game-controls">
+              <button class="btn" id="btn-hint">💡 Tipp</button>
+              <button class="btn" id="btn-takeback">↩ Zurück</button>
               <button class="btn" id="btn-draw">½ Remis</button>
               <button class="btn danger" id="btn-resign">🏳 Aufgeben</button>
-              <button class="btn primary hidden" id="btn-back">Zurück zur Lobby</button>
+            </div>
+            <div class="controls hidden" id="post-controls">
+              <button class="btn primary" id="btn-rematch">🔁 Revanche</button>
+              <button class="btn gold" id="btn-analyze">🔍 Analyse</button>
+              <button class="btn" id="btn-pgn">📋 PGN</button>
+              <button class="btn" id="btn-back">Lobby</button>
             </div>
             <div class="chat hidden" id="chat">
               <div class="chat-log" id="chat-log"></div>
-              <form id="chat-form"><input id="chat-input" placeholder="Nachricht…" maxlength="200"></form>
+              <form id="chat-form"><input id="chat-input" placeholder="Nachricht…" maxlength="200" autocomplete="off"></form>
             </div>
           </aside>
         </div>
       </div>
 
-      <!-- Battlepass -->
+      <!-- ================= Partie (4 Spieler) ================= -->
+      <div id="view-fp" class="view hidden">
+        <div class="fp-layout">
+          <div class="fp-board-wrap"><div id="fp-board"></div></div>
+          <aside class="side">
+            <div class="status" id="fp-status"></div>
+            <div class="fp-players" id="fp-players"></div>
+            <details class="fp-rules"><summary>Regeln</summary>
+              <ul>
+                <li>Reihenfolge: Rot → Blau → Gelb → Grün</li>
+                <li>Punkte: Bauer 1, Springer 3, Läufer/Turm 5, Dame 9 (umgewandelte Dame 1)</li>
+                <li>Schachmatt: +20 und der Gegner scheidet aus · Patt: +20 für den Pattgesetzten</li>
+                <li>Ausgeschiedene Figuren werden grau und bringen 0 Punkte</li>
+                <li>Bauern werden in der Brettmitte (8. Reihe) zur Dame</li>
+                <li>Wer am Ende die meisten Punkte hat, gewinnt</li>
+              </ul>
+            </details>
+            <div class="controls">
+              <button class="btn danger" id="btn-fp-resign">🏳 Aufgeben</button>
+              <button class="btn primary hidden" id="btn-fp-back">Lobby</button>
+            </div>
+            <div class="chat" id="fp-chat">
+              <div class="chat-log" id="fp-chat-log"></div>
+              <form id="fp-chat-form"><input id="fp-chat-input" placeholder="Nachricht…" maxlength="200" autocomplete="off"></form>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <!-- ================= Taktik ================= -->
+      <div id="view-puzzles" class="view hidden">
+        <div class="tabs sub-tabs" id="puzzle-tabs">
+          <button data-pmode="rated" class="active">🧩 Gewertet</button>
+          <button data-pmode="daily">📅 Tägliches Rätsel</button>
+          <button data-pmode="rush">⚡ Puzzle Rush</button>
+        </div>
+        <div class="game-layout">
+          <div class="board-wrap">
+            <div class="puzzle-head" id="puzzle-head"></div>
+            <div id="puzzle-board"></div>
+          </div>
+          <aside class="side">
+            <div class="status" id="puzzle-status"></div>
+            <div class="puzzle-info" id="puzzle-info"></div>
+            <div class="controls">
+              <button class="btn" id="btn-puzzle-hint">💡 Tipp</button>
+              <button class="btn" id="btn-puzzle-solution">👁 Lösung</button>
+              <button class="btn primary" id="btn-puzzle-next">Nächste ▶</button>
+            </div>
+            <button class="btn gold big hidden" id="btn-rush-start">⚡ Rush starten (3 Minuten, 3 Leben)</button>
+          </aside>
+        </div>
+      </div>
+
+      <!-- ================= Zuschauen ================= -->
+      <div id="view-watch" class="view hidden">
+        <h1>📺 Live-Partien</h1>
+        <p class="muted">Schau anderen beim Spielen zu. Die Liste aktualisiert sich automatisch.</p>
+        <div class="live-list" id="live-list"></div>
+      </div>
+
+      <!-- ================= Freunde ================= -->
+      <div id="view-friends" class="view hidden">
+        <h1>👥 Freunde</h1>
+        <form class="row add-friend" id="friend-form">
+          <input id="friend-name" placeholder="Spielername hinzufügen" maxlength="16">
+          <button class="btn primary">Hinzufügen</button>
+        </form>
+        <div class="friend-list" id="friend-list"></div>
+      </div>
+
+      <!-- ================= Battlepass ================= -->
       <div id="view-pass" class="view hidden">
         <div class="pass-head">
           <div>
             <h1 id="season-name"></h1>
-            <p class="muted">Sammle XP in jeder Partie und schalte Belohnungen frei.</p>
+            <p class="muted">Sammle XP in jeder Partie und jedem Rätsel und schalte Belohnungen frei.</p>
           </div>
           <div class="pass-progress">
             <div>Stufe <b id="pass-tier">0</b> / <span id="pass-max">30</span></div>
@@ -138,7 +246,7 @@
         <div class="pass-track" id="pass-track"></div>
       </div>
 
-      <!-- Shop -->
+      <!-- ================= Shop ================= -->
       <div id="view-shop" class="view hidden">
         <h1>Shop & Sammlung</h1>
         <h2>Bretter</h2>
@@ -147,34 +255,37 @@
         <div class="skin-grid" id="shop-pieces"></div>
       </div>
 
-      <!-- Rangliste -->
+      <!-- ================= Rangliste ================= -->
       <div id="view-leaderboard" class="view hidden">
         <h1>Rangliste</h1>
+        <div class="tabs sub-tabs" id="lb-tabs"></div>
         <table class="table" id="lb-table">
           <thead><tr><th>#</th><th>Spieler</th><th>Elo</th><th>Rang</th><th>S/R/N</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
 
-      <!-- Profil -->
+      <!-- ================= Profil ================= -->
       <div id="view-profile" class="view hidden">
-        <h1 id="profile-name"></h1>
+        <div class="profile-head">
+          <h1 id="profile-name"></h1>
+          <div class="row" id="profile-actions"></div>
+        </div>
+        <div class="rating-cards" id="profile-ratings"></div>
         <div class="cards" id="profile-stats"></div>
-        <h2>Letzte Online-Partien</h2>
-        <table class="table" id="history-table">
-          <thead><tr><th>Gegner</th><th>Ergebnis</th><th>Grund</th><th>Elo</th><th>Zeit</th></tr></thead>
+        <h2>Letzte Partien</h2>
+        <table class="table clickable" id="history-table">
+          <thead><tr><th>Art</th><th>Gegner</th><th>Ergebnis</th><th>Grund</th><th>Elo</th><th>Datum</th></tr></thead>
           <tbody></tbody>
         </table>
-        <button class="btn" id="btn-logout">Abmelden</button>
+        <p><button class="btn" id="btn-logout">Abmelden</button></p>
       </div>
     </main>
   </section>
 
   <!-- Dialoge -->
-  <div class="modal hidden" id="modal">
-    <div class="modal-card" id="modal-card"></div>
-  </div>
-  <div class="toast hidden" id="toast"></div>
+  <div class="modal hidden" id="modal"><div class="modal-card" id="modal-card"></div></div>
+  <div class="toast-stack" id="toasts"></div>
 
   <script type="module" src="/app.js"></script>
 </body>

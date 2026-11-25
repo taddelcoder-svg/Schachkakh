@@ -3,6 +3,25 @@
 export const START_ELO = 1200;
 export const START_COINS = 150;
 
+// ---------- Wertungen & Bedenkzeiten (wie bei Chess.com getrennt) ----------
+export const RATING_TYPES = [
+  { id: 'bullet', name: 'Bullet', icon: '⚡' },
+  { id: 'blitz', name: 'Blitz', icon: '🔥' },
+  { id: 'rapid', name: 'Schnellschach', icon: '⏱️' },
+  { id: 'fourp', name: '4 Spieler', icon: '🎲' },
+  { id: 'puzzle', name: 'Taktik', icon: '🧩' },
+];
+
+export const TIME_CONTROLS = {
+  '1+0': { base: 60_000, inc: 0, type: 'bullet' },
+  '2+1': { base: 120_000, inc: 1_000, type: 'bullet' },
+  '3+0': { base: 180_000, inc: 0, type: 'blitz' },
+  '3+2': { base: 180_000, inc: 2_000, type: 'blitz' },
+  '5+0': { base: 300_000, inc: 0, type: 'blitz' },
+  '10+0': { base: 600_000, inc: 0, type: 'rapid' },
+  '15+10': { base: 900_000, inc: 10_000, type: 'rapid' },
+};
+
 // ---------- Skins ----------
 // Brett-Skins: helle / dunkle Felder + Hervorhebungsfarbe
 export const BOARD_SKINS = {
@@ -61,10 +80,12 @@ export function tierFromXp(xp) {
 
 // ---------- KI-Stufen ----------
 export const AI_LEVELS = [
-  { id: 1, name: 'Anfänger',      depth: 1, randomness: 0.6, xpMult: 0.5 },
-  { id: 2, name: 'Fortgeschritten', depth: 2, randomness: 0.25, xpMult: 0.8 },
-  { id: 3, name: 'Experte',       depth: 3, randomness: 0.05, xpMult: 1.0 },
-  { id: 4, name: 'Großmeister',   depth: 4, randomness: 0, xpMult: 1.3 },
+  { id: 1, name: 'Anfänger', elo: 400, depth: 1, randomness: 0.6, xpMult: 0.4, avatar: '🐣' },
+  { id: 2, name: 'Einsteiger', elo: 800, depth: 2, randomness: 0.35, xpMult: 0.6, avatar: '🐢' },
+  { id: 3, name: 'Fortgeschritten', elo: 1200, depth: 2, randomness: 0.12, xpMult: 0.8, avatar: '🦊' },
+  { id: 4, name: 'Experte', elo: 1600, depth: 3, randomness: 0.04, xpMult: 1.0, avatar: '🦉' },
+  { id: 5, name: 'Meister', elo: 2000, depth: 4, randomness: 0, xpMult: 1.2, avatar: '🐺' },
+  { id: 6, name: 'Großmeister', elo: 2200, depth: 5, randomness: 0, xpMult: 1.4, avatar: '🐉' },
 ];
 
 // ---------- Belohnungen pro Partie ----------

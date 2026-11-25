@@ -128,12 +128,12 @@ function rootSearch(chess, maxDepth, timeMs, useQuiesce, exact) {
 let baseLen = 0;
 
 self.onmessage = ({ data }) => {
-  const { fen, pgn, depth, randomness, timeMs } = data;
+  const { fen, pgn, depth, randomness, timeMs, id } = data;
   const chess = new Chess();
   if (pgn) chess.loadPgn(pgn); else chess.load(fen);
   baseLen = chess.history().length;
   const scored = rootSearch(chess, depth, timeMs ?? 4000, depth >= 3, randomness > 0);
-  if (scored.length === 0) return self.postMessage({ move: null });
+  if (scored.length === 0) return self.postMessage({ id, move: null, score: chess.inCheck() ? -MATE : 0, over: true });
 
   // Schwächere Stufen wählen manchmal einen schlechteren Zug
   let pick = scored[0];
@@ -143,5 +143,5 @@ self.onmessage = ({ data }) => {
     pick = ok[Math.floor(Math.random() * ok.length)];
   }
   const m = pick.move;
-  self.postMessage({ move: { from: m.from, to: m.to, promotion: m.promotion }, score: pick.score, nodes });
+  self.postMessage({ id, move: { from: m.from, to: m.to, promotion: m.promotion, san: m.san }, score: pick.score, best: scored[0].score, nodes });
 };
