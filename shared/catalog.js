@@ -161,8 +161,8 @@ export const ACHIEVEMENTS = [
   { id: 'fp_win', name: 'Herrscher der vier', desc: 'Gewinne eine 4-Spieler-Partie', icon: '🎲', coins: 50 },
   { id: 'fp_wins10', name: 'Kreuzritter', desc: 'Gewinne 10 4-Spieler-Partien', icon: '⚔️', coins: 150 },
   { id: 'tourney_play', name: 'Turnierluft', desc: 'Spiele in einem Arena-Turnier mit', icon: '🏟️', coins: 25 },
-  { id: 'tourney_podium', name: 'Aufs Treppchen', desc: 'Werde Top 3 in einem Turnier', icon: '🥉', coins: 100 },
-  { id: 'tourney_win', name: 'Turniersieger', desc: 'Gewinne ein Arena-Turnier', icon: '🏆', coins: 200 },
+  { id: 'tourney_podium', name: 'Aufs Treppchen', desc: 'Werde Top 3 in einem Turnier (ab 4 Spielern)', icon: '🥉', coins: 100 },
+  { id: 'tourney_win', name: 'Turniersieger', desc: 'Gewinne ein Turnier (ab 4 Spielern)', icon: '🏆', coins: 200 },
   { id: 'streak7', name: 'Stammgast', desc: 'Komm 7 Tage in Folge vorbei', icon: '📆', coins: 75 },
   { id: 'daily7', name: 'Rätsel-Routine', desc: 'Löse das tägliche Rätsel 7 Tage in Folge', icon: '📅', coins: 75 },
   { id: 'friends5', name: 'Gesellig', desc: 'Habe 5 Freunde', icon: '👥', coins: 40 },
@@ -181,3 +181,15 @@ export const ARENA_PRIZES = [300, 150, 75];
 
 // ---------- Emotes ----------
 export const EMOTES = ['👍', '😂', '😮', '😡', '😢', '🔥', '🤝', 'GG'];
+
+// ---------- Eigene Turniere ----------
+export const CUSTOM_TOURNEY = {
+  durations: [10, 20, 30, 45, 60, 90],        // Minuten
+  startIns: [1, 5, 10, 15, 30, 60, 120, 240], // Start in … Minuten
+  maxPool: 2000,                             // Preistopf aus eigenen Münzen
+  shares: [0.5, 0.3, 0.2],                   // Aufteilung Platz 1–3
+  maxActive: 30,
+};
+
+// Namensänderung: höchstens alle 7 Tage
+export const RENAME_COOLDOWN_DAYS = 7;

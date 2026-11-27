@@ -6,10 +6,13 @@ import { openingName } from '/shared/openings.js';
 import {
   BOARD_SKINS, PIECE_SKINS, BATTLEPASS, SEASON, XP_PER_TIER, MAX_TIER, AI_LEVELS,
   RATING_TYPES, TIME_CONTROLS, tierFromXp, rankName, QUESTS, ACHIEVEMENTS, EMOTES, ARENA_PRIZES,
+  CUSTOM_TOURNEY, RENAME_COOLDOWN_DAYS,
 } from '/shared/catalog.js';
 
-const VERSION = '1.3';
+const VERSION = '1.4';
 const WHATS_NEW = [
+  ['🏆', 'Eigene Turniere', 'Erstelle dein eigenes Arena-Turnier: Name, Bedenkzeit, Dauer, öffentlich oder privat per Code – mit Preistopf aus deinen Münzen.'],
+  ['✏️', 'Namen ändern', 'Im Profil kannst du jetzt deinen Spielernamen und dein Passwort ändern.'],
   ['🏟️', 'Arena-Turniere', 'Jede halbe Stunde: Blitz- und Bullet-Arena mit automatischen Paarungen, 🔥 Serienbonus und Münzpreisen für die Top 3.'],
   ['📋', 'Tagesaufgaben', 'Jeden Tag drei neue Aufgaben – alle geschafft gibt es einen Extra-Bonus.'],
   ['📆', 'Login-Bonus', 'Komm jeden Tag vorbei: bis zu 70 Münzen pro Tag für deine Serie.'],
@@ -42,6 +45,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const fmtDate = (t) => new Date(t).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
 
 let token = store.get('token');
+let pendingTourneyCode = new URLSearchParams(location.search).get('turnier');
 let me = null;
 
 class ApiError extends Error { constructor(msg, status) { super(msg); this.status = status; } }
@@ -409,7 +413,9 @@ function wsSend(msg) {
 
 function onWsMessage(msg) {
   switch (msg.type) {
-    case 'auth_ok': $('#online-count').textContent = `${msg.online} Spieler online`; updateQueueButton(); renderLobbyExtras(); if (currentView === 'tournaments' && TOUR.selected) wsSendQuiet({ type: 'tournament_watch', id: TOUR.selected }); break;
+    case 'auth_ok': $('#online-count').textContent = `${msg.online} Spieler online`; updateQueueButton(); renderLobbyExtras(); if (currentView === 'tournaments' && TOUR.selected) wsSendQuiet({ type: 'tournament_watch', id: TOUR.selected });
+      if (pendingTourneyCode) { wsSendQuiet({ type: 'tournament_code', code: pendingTourneyCode }); pendingTourneyCode = null; history.replaceState(null, '', location.pathname); }
+      break;
     case 'auth_failed': token = null; store.set('token', null); location.reload(); break;
     case 'queued':
       setQueued(true, msg.kind === '4p' ? `Suche 4-Spieler-Partie (Bots ab ${msg.botFillSeconds}s)…` : `Suche Gegner (${msg.tc})…`);
@@ -462,6 +468,20 @@ function onWsMessage(msg) {
     case 'tournaments': renderTournamentList(msg); break;
     case 'tournament': onTournamentState(msg.t); break;
     case 'tournament_result': onTournamentResult(msg); break;
+    case 'tournament_created':
+      toast(`🏆 Turnier erstellt · Code ${msg.code}`);
+      refreshMe();
+      wsSendQuiet({ type: 'tournaments' });
+      openTournament(msg.id);
+      break;
+    case 'tournament_found': openTournament(msg.id); break;
+    case 'tournament_cancelled':
+      if (TOUR.selected === msg.id) { toast('🏟️ Dieses Turnier wurde abgesagt'); TOUR.selected = null; TOUR.states.delete(msg.id); $('#tourney-detail').replaceChildren(h('p', { class: 'muted' }, 'Das Turnier wurde abgesagt.')); }
+      wsSendQuiet({ type: 'tournaments' });
+      refreshMe();
+      break;
+    case 'toast': toast(msg.message); break;
+    case 'user_update': refreshMe(); break;
     case 'emote': showEmote(msg); break;
     case 'error':
       toast(msg.message, 'err');
@@ -1610,6 +1630,11 @@ async function renderProfile(name) {
     else { const d = await api('/api/user/' + encodeURIComponent(name)); profile = d.profile; ratings = profile.ratings; games = d.games; status = d.status; isFriend = d.isFriend; }
     const best = Math.max(...['bullet', 'blitz', 'rapid'].map((t) => ratings[t].elo));
     $('#profile-name').replaceChildren(h('span', { class: `status-dot ${status}` }), ` ${profile.name} `, h('small', { class: 'muted' }, `· ${rankName(best)} · dabei seit ${fmtDate(profile.createdAt)}`));
+    if (own) {
+      $('#profile-actions').append(
+        h('button', { class: 'btn', onclick: renameDialog }, '✏️ Namen ändern'),
+        h('button', { class: 'btn', onclick: passwordDialog }, '🔑 Passwort ändern'));
+    }
     if (!own) {
       const acts = $('#profile-actions');
       if (!isFriend) acts.append(h('button', { class: 'btn primary', onclick: async () => { try { await api('/api/friends/add', { name: profile.name }); toast('Freund hinzugefügt'); renderProfile(name); } catch (e) { toast(e.message, 'err'); } } }, '➕ Freund'));
@@ -1744,7 +1769,12 @@ function renderTournamentList(msg, fromTimer = false) {
     return h('div', { class: `t-card ${TOUR.selected === t.id ? 'active' : ''}`, onclick: () => openTournament(t.id) },
       h('div', { class: 't-name' }, h('b', {}, t.name), h('span', { class: 'chip' }, TC_LABEL[t.tc] || t.tc)),
       h('div', { class: `t-status ${st.cls}` }, st.text),
-      h('small', { class: 'muted' }, `👥 ${t.players}`, t.joined ? ' · ✅ angemeldet' : '', finished && t.podium?.[0] ? ` · 🥇 ${t.podium[0].name}` : ''));
+      h('small', { class: 'muted' }, `👥 ${t.players}`, t.joined ? ' · ✅ angemeldet' : '', finished && t.podium?.[0] ? ` · 🥇 ${t.podium[0].name}` : ''),
+      t.custom ? h('div', { class: 't-badges' },
+        h('span', {}, t.mine ? '👑 von dir' : `👤 ${t.creatorName || ''}`),
+        t.private ? h('span', {}, '🔒 privat') : null,
+        t.rated === false ? h('span', {}, 'ungewertet') : null,
+        t.prizePool ? h('span', { class: 'gold-text' }, `🪙 ${t.prizePool}`) : null) : null);
   };
   list.replaceChildren(...[
     h('h2', {}, 'Aktuell & demnächst'), ...TOUR.list.current.map((t) => card(t, false)),
@@ -1785,9 +1815,26 @@ function renderTournamentDetail() {
     h('td', { class: 'results' }, ...p.results.map((r) => h('span', { class: `res r${r.replace('🔥', '')} ${r.includes('🔥') ? 'fire' : ''}` }, r.replace('🔥', '')))),
     h('td', {}, h('b', {}, p.score))));
   const podium = t.status === 'finished' && t.podium?.length ? h('div', { class: 'podium' }, ...t.podium.map((p, i) => h('div', { class: `pod p${i + 1}` }, h('span', {}, ['🥇', '🥈', '🥉'][i]), h('b', {}, p.name), h('small', {}, `${p.score} P. · 🪙 ${ARENA_PRIZES[i]}`)))) : null;
+  let customBox = null;
+  if (t.custom) {
+    const link = t.code ? `${location.origin}/?turnier=${t.code}` : null;
+    const pool = t.prizePool ? CUSTOM_TOURNEY.shares.map((x, i) => `${['🥇', '🥈', '🥉'][i]} ${Math.floor(t.prizePool * x)}`).join(' · ') : 'kein Preistopf';
+    customBox = h('div', { class: 'custom-box' },
+      h('div', { class: 'custom-meta' },
+        h('span', {}, `👤 Veranstalter: `, h('b', {}, t.creatorName)),
+        h('span', {}, t.rated ? '🏆 gewertet' : '🎈 ungewertet'),
+        h('span', {}, t.private ? '🔒 privat' : '🌍 öffentlich'),
+        h('span', { class: 'gold-text' }, `🪙 Preise: ${pool}`)),
+      t.description ? h('p', { class: 'muted' }, t.description) : null,
+      t.code ? h('div', { class: 'share-row' },
+        h('span', {}, 'Code: ', h('b', { class: 'code' }, t.code)),
+        h('button', { class: 'btn small', onclick: () => { navigator.clipboard?.writeText(t.code); toast('Code kopiert'); } }, '📋 Code'),
+        h('button', { class: 'btn small primary', onclick: () => shareLink(link, t.name) }, '🔗 Einladungslink')) : null,
+      t.creatorId === me.id && t.status === 'upcoming' ? h('button', { class: 'btn small danger', onclick: () => confirmBox('Turnier absagen? Der Preistopf geht an dich zurück.', 'Absagen', () => wsSend({ type: 'tournament_cancel', id: t.id })) }, '✖ Turnier absagen') : null);
+  }
   box.replaceChildren(...[
     h('div', { class: 'tour-head' }, h('div', {}, h('h2', {}, `${t.name} · ${TC_LABEL[t.tc]}`), h('div', { class: `t-status ${st.cls}` }, st.text)), actions),
-    info ? h('p', { class: 'tour-info' }, info) : null, meBox, podium,
+    customBox, info ? h('p', { class: 'tour-info' }, info) : null, meBox, podium,
     t.standings.length ? h('table', { class: 'table tour-table' }, h('thead', {}, h('tr', {}, h('th', {}, '#'), h('th', {}, 'Spieler'), h('th', {}, 'Elo'), h('th', {}, 'Ergebnisse'), h('th', {}, 'Punkte'))), h('tbody', {}, ...rows))
       : h('p', { class: 'muted' }, 'Noch niemand angemeldet – sei der Erste!')].filter(Boolean));
 }
@@ -1827,6 +1874,115 @@ function showEmote(msg) {
   host.append(b);
   setTimeout(() => b.classList.add('out'), 2200);
   setTimeout(() => b.remove(), 2600);
+}
+
+// ======================================================================
+// Eigene Turniere erstellen
+// ======================================================================
+async function refreshMe() {
+  try { const d = await api('/api/me'); if (d.user) setMe(d.user); } catch {}
+}
+
+function shareLink(link, name) {
+  if (navigator.share) navigator.share({ title: name, text: `Spiel mit im Turnier „${name}“ auf Schachkakh!`, url: link }).catch(() => {});
+  else { navigator.clipboard?.writeText(link); toast('Einladungslink kopiert'); }
+}
+
+$('#tourney-code-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const code = $('#tourney-code').value.trim();
+  if (code) wsSend({ type: 'tournament_code', code });
+});
+
+$('#btn-tourney-create').addEventListener('click', () => {
+  const o = { name: `${me.name}s Turnier`, tc: '5+0', duration: 30, startIn: 5, rated: true, private: false, prizePool: 0, description: '' };
+  const seg = (key, values, label) => h('div', { class: 'seg wrap' }, ...values.map((v) => h('button', {
+    type: 'button', class: o[key] === v ? 'active' : '',
+    onclick: (e) => { o[key] = v; $$('button', e.currentTarget.parentNode).forEach((x) => x.classList.toggle('active', x === e.currentTarget)); update(); },
+  }, label(v))));
+  const startLabel = (m) => (m < 60 ? `${m} min` : `${m / 60} h`);
+  const summary = h('p', { class: 'muted small-note' });
+  const poolInput = h('input', { type: 'number', min: 0, max: Math.min(CUSTOM_TOURNEY.maxPool, me.coins), step: 10, value: 0, oninput: (e) => { o.prizePool = Math.max(0, Math.floor(Number(e.target.value) || 0)); update(); } });
+  const err = h('p', { class: 'error' });
+  function update() {
+    const start = new Date(Date.now() + o.startIn * 60_000);
+    const end = new Date(start.getTime() + o.duration * 60_000);
+    const f = (d) => d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    summary.textContent = `Start ${f(start)} Uhr · Ende ${f(end)} Uhr · ${o.prizePool ? `Preise ${CUSTOM_TOURNEY.shares.map((x) => Math.floor(o.prizePool * x)).join(' / ')} Münzen (nicht vergebene gehen an dich zurück)` : 'ohne Preistopf'}`;
+  }
+  update();
+  const field = (label, ...el) => h('label', { class: 'field' }, h('span', {}, label), ...el);
+  modal([
+    h('h2', {}, '🏆 Eigenes Turnier'),
+    h('form', { class: 'create-form', onsubmit: (e) => {
+      e.preventDefault();
+      err.textContent = '';
+      if (o.prizePool > me.coins) { err.textContent = 'Nicht genug Münzen'; return; }
+      closeModal();
+      wsSend({ type: 'tournament_create', ...o });
+    } },
+      field('Name', h('input', { value: o.name, maxlength: 40, required: true, oninput: (e) => { o.name = e.target.value; } })),
+      field('Beschreibung (optional)', h('input', { maxlength: 140, placeholder: 'z. B. Klassen-Turnier, nur für 7b', oninput: (e) => { o.description = e.target.value; } })),
+      field('Bedenkzeit', seg('tc', Object.keys(TIME_CONTROLS), (v) => TC_LABEL[v])),
+      field('Dauer', seg('duration', CUSTOM_TOURNEY.durations, (v) => `${v} min`)),
+      field('Start in', seg('startIn', CUSTOM_TOURNEY.startIns, startLabel)),
+      h('label', { class: 'toggle' }, h('span', {}, '🏆 Gewertet (Elo zählt)'), h('input', { type: 'checkbox', checked: true, onchange: (e) => { o.rated = e.target.checked; } })),
+      h('label', { class: 'toggle' }, h('span', {}, '🔒 Privat (nur mit Code oder Link)'), h('input', { type: 'checkbox', onchange: (e) => { o.private = e.target.checked; } })),
+      field(`🪙 Preistopf aus deinen Münzen (du hast ${me.coins})`, poolInput),
+      summary, err,
+      h('div', { class: 'actions' },
+        h('button', { type: 'button', class: 'btn', onclick: closeModal }, 'Abbrechen'),
+        h('button', { type: 'submit', class: 'btn gold' }, 'Erstellen'))),
+  ]);
+});
+
+// ======================================================================
+// Konto: Name & Passwort ändern
+// ======================================================================
+function renameDialog() {
+  const left = (me.nameChangedAt || 0) + RENAME_COOLDOWN_DAYS * 86400000 - Date.now();
+  if (left > 0) return toast(`Namen ändern geht erst wieder in ${Math.ceil(left / 86400000)} Tag(en)`, 'err');
+  const err = h('p', { class: 'error' });
+  const nameIn = h('input', { value: me.name, maxlength: 16, minlength: 3, required: true, autocomplete: 'username' });
+  const pwIn = h('input', { type: 'password', placeholder: 'Passwort zur Bestätigung', required: true, autocomplete: 'current-password' });
+  modal([
+    h('h2', {}, '✏️ Namen ändern'),
+    h('p', { class: 'muted small-note' }, `3–16 Zeichen: Buchstaben, Zahlen, _ und -. Danach kannst du ihn ${RENAME_COOLDOWN_DAYS} Tage nicht mehr ändern. Freunde, Wertungen und alte Partien bleiben erhalten.`),
+    h('form', { class: 'create-form', onsubmit: async (e) => {
+      e.preventDefault();
+      err.textContent = '';
+      try {
+        const d = await api('/api/account/rename', { name: nameIn.value.trim(), password: pwIn.value });
+        closeModal();
+        toast(`Du heißt jetzt ${d.user.name} ✨`);
+        renderProfile(d.user.name);
+      } catch (ex) { err.textContent = ex.message; }
+    } }, nameIn, pwIn, err,
+      h('div', { class: 'actions' }, h('button', { type: 'button', class: 'btn', onclick: closeModal }, 'Abbrechen'), h('button', { type: 'submit', class: 'btn primary' }, 'Speichern'))),
+  ]);
+  nameIn.select();
+}
+
+function passwordDialog() {
+  const err = h('p', { class: 'error' });
+  const oldIn = h('input', { type: 'password', placeholder: 'Aktuelles Passwort', required: true, autocomplete: 'current-password' });
+  const newIn = h('input', { type: 'password', placeholder: 'Neues Passwort (mind. 6 Zeichen)', required: true, minlength: 6, autocomplete: 'new-password' });
+  const repIn = h('input', { type: 'password', placeholder: 'Neues Passwort wiederholen', required: true, minlength: 6, autocomplete: 'new-password' });
+  modal([
+    h('h2', {}, '🔑 Passwort ändern'),
+    h('p', { class: 'muted small-note' }, 'Andere Geräte werden danach abgemeldet – dieses bleibt angemeldet.'),
+    h('form', { class: 'create-form', onsubmit: async (e) => {
+      e.preventDefault();
+      err.textContent = '';
+      if (newIn.value !== repIn.value) { err.textContent = 'Die neuen Passwörter stimmen nicht überein'; return; }
+      try {
+        await api('/api/account/password', { oldPassword: oldIn.value, newPassword: newIn.value });
+        closeModal();
+        toast('🔑 Passwort geändert');
+      } catch (ex) { err.textContent = ex.message; }
+    } }, oldIn, newIn, repIn, err,
+      h('div', { class: 'actions' }, h('button', { type: 'button', class: 'btn', onclick: closeModal }, 'Abbrechen'), h('button', { type: 'submit', class: 'btn primary' }, 'Speichern'))),
+  ]);
 }
 
 boot();

@@ -202,8 +202,16 @@
 
       <!-- ================= Turniere ================= -->
       <div id="view-tournaments" class="view hidden">
-        <h1>🏟️ Arena-Turniere</h1>
-        <p class="muted">Jede halbe Stunde startet eine Arena. Du wirst automatisch gepaart, sobald du frei bist. Sieg 2 Punkte, Remis 1 – ab zwei Siegen in Folge zählt alles doppelt 🔥. Die Top 3 gewinnen 300 / 150 / 75 Münzen.</p>
+        <div class="tourney-top">
+          <div>
+            <h1>🏟️ Arena-Turniere</h1>
+            <p class="muted">Jede halbe Stunde startet eine Arena – oder du erstellst dein eigenes Turnier. Du wirst automatisch gepaart, sobald du frei bist. Sieg 2 Punkte, Remis 1, ab zwei Siegen in Folge zählt alles doppelt 🔥.</p>
+          </div>
+          <div class="tourney-actions">
+            <button class="btn gold" id="btn-tourney-create">➕ Eigenes Turnier</button>
+            <form class="row" id="tourney-code-form"><input id="tourney-code" placeholder="Turnier-Code" maxlength="6" autocapitalize="characters"><button class="btn">Öffnen</button></form>
+          </div>
+        </div>
         <div class="tourney-layout">
           <div class="tourney-list" id="tourney-list"></div>
           <div class="card tourney-detail" id="tourney-detail"><p class="muted">Wähle links ein Turnier.</p></div>

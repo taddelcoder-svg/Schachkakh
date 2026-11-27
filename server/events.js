@@ -127,8 +127,8 @@ function achieved(id, u, e) {
     case 'fp_win': return (st.fpWins || 0) >= 1;
     case 'fp_wins10': return (st.fpWins || 0) >= 10;
     case 'tourney_play': return (st.tourneys || 0) >= 1;
-    case 'tourney_podium': return e?.event === 'tournament' && e.place <= 3 && e.games > 0;
-    case 'tourney_win': return e?.event === 'tournament' && e.place === 1 && e.games > 0;
+    case 'tourney_podium': return e?.event === 'tournament' && e.place <= 3 && e.games > 0 && (e.players || 0) >= 4;
+    case 'tourney_win': return e?.event === 'tournament' && e.place === 1 && e.games > 0 && (e.players || 0) >= 4;
     case 'streak7': return (u.daily?.streak || 0) >= 7;
     case 'daily7': return (u.puzzles?.dailyStreak || 0) >= 7;
     case 'friends5': return (u.friends?.length || 0) >= 5;

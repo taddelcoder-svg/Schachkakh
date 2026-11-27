@@ -11,6 +11,8 @@ import { GameError, applyRewards, buySkin, equipSkin, buyPremium, claimTier } fr
 import { AI_LEVELS, RATING_TYPES, eloChange } from '../shared/catalog.js';
 import { PUZZLES } from '../shared/puzzles.js';
 import { track, claimLoginBonus, checkAchievements, ensureState } from './events.js';
+import { renamePlayer } from './tournaments.js';
+import { RENAME_COOLDOWN_DAYS } from '../shared/catalog.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT || 3000);
@@ -173,6 +175,29 @@ async function api(req, res, url) {
     case 'GET /api/me': {
       const loginBonus = claimLoginBonus(user);
       return json(res, 200, { user: db.publicUser(user), online: onlineCount(), puzzleCount: PUZZLES.length, loginBonus });
+    }
+    case 'POST /api/account/rename': {
+      if (rateLimited('rename:' + user.id, 5)) return json(res, 429, { error: 'Zu viele Versuche, bitte warte eine Minute' });
+      const { name, password } = await readBody(req);
+      const newName = String(name || '').trim();
+      if (!db.checkPassword(user, String(password || ''))) throw new GameError('Passwort ist falsch');
+      if (!NAME_RE.test(newName)) throw new GameError('Name: 3–16 Zeichen, Buchstaben/Zahlen/_/-');
+      if (newName === user.name) throw new GameError('Das ist schon dein Name');
+      const other = db.findUserByName(newName);
+      if (other && other.id !== user.id) throw new GameError('Name ist schon vergeben');
+      const wait = (user.nameChangedAt || 0) + RENAME_COOLDOWN_DAYS * 86400000 - Date.now();
+      if (wait > 0) throw new GameError(`Du kannst deinen Namen erst in ${Math.ceil(wait / 86400000)} Tag(en) wieder ändern`);
+      const old = db.renameUser(user, newName);
+      renamePlayer(user.id, newName);
+      return json(res, 200, { old, user: db.publicUser(user) });
+    }
+    case 'POST /api/account/password': {
+      if (rateLimited('pw:' + user.id, 5)) return json(res, 429, { error: 'Zu viele Versuche, bitte warte eine Minute' });
+      const { oldPassword, newPassword } = await readBody(req);
+      if (!db.checkPassword(user, String(oldPassword || ''))) throw new GameError('Aktuelles Passwort ist falsch');
+      if (typeof newPassword !== 'string' || newPassword.length < 6) throw new GameError('Neues Passwort: mindestens 6 Zeichen');
+      db.setPassword(user, newPassword, (req.headers.authorization || '').slice(7));
+      return json(res, 200, { ok: true });
     }
     case 'GET /api/quests':
       ensureState(user);

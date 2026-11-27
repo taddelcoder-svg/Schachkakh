@@ -1,6 +1,6 @@
 // Arena-Turniere: feste Startzeiten, ständige Paarungen, Punkte mit Siegesserien-Bonus, Preise für die Top 3.
 import crypto from 'node:crypto';
-import { ARENA_SCHEDULE, ARENA_PRIZES, TIME_CONTROLS } from '../shared/catalog.js';
+import { ARENA_SCHEDULE, ARENA_PRIZES, TIME_CONTROLS, CUSTOM_TOURNEY } from '../shared/catalog.js';
 import * as db from './db.js';
 import { track } from './events.js';
 
@@ -14,6 +14,7 @@ const watchers = new Map();     // id -> Set<ws>
 
 export function initTournaments(h) {
   hooks = h;
+  restoreCustom();
   schedule();
   setInterval(tick, 2000).unref();
 }
@@ -103,7 +104,7 @@ function pair(t, now) {
     // Farben abwechseln
     const aWhite = a.lastColor === 'w' ? false : b.lastColor === 'w' ? true : Math.random() < 0.5;
     const [w, bl] = aWhite ? [a, b] : [b, a];
-    const g = hooks.startGame(db.getUser(w.id), db.getUser(bl.id), t.tc, true, { tournamentId: t.id, tournamentName: t.name });
+    const g = hooks.startGame(db.getUser(w.id), db.getUser(bl.id), t.tc, t.rated !== false, { tournamentId: t.id, tournamentName: t.name });
     if (!g) continue;
     t.games.add(g.id);
     for (const [p, color, opp] of [[w, 'w', bl], [bl, 'b', w]]) { p.inGame = g.id; p.lastColor = color; p.lastOpp = opp.id; }
@@ -154,18 +155,37 @@ function finalize(t) {
   t.finishedAt = Date.now();
   const list = standings(t).filter((p) => p.games > 0);
   t.podium = list.slice(0, 3).map((p) => ({ id: p.id, name: p.name, score: p.score }));
+  let paidOut = 0;
   list.forEach((p, i) => {
     const u = db.getUser(p.id);
     if (!u) return;
-    // Preisgeld nur mit Punkten; kleine Turniere (unter 4 Spielern) zahlen die Hälfte – gegen Münz-Farming
-    let prize = p.score > 0 ? ARENA_PRIZES[i] || 0 : 0;
-    if (list.length < 4) prize = Math.floor(prize / 2);
+    let prize;
+    if (t.custom) {
+      // Eigenes Turnier: Preistopf des Veranstalters (50/30/20), nur an Spieler mit Punkten
+      prize = p.score > 0 ? Math.floor((t.prizePool || 0) * (CUSTOM_TOURNEY.shares[i] || 0)) : 0;
+      paidOut += prize;
+    } else {
+      // Preisgeld nur mit Punkten; kleine Turniere (unter 4 Spielern) zahlen die Hälfte – gegen Münz-Farming
+      prize = p.score > 0 ? ARENA_PRIZES[i] || 0 : 0;
+      if (list.length < 4) prize = Math.floor(prize / 2);
+    }
+    const xp = t.custom ? 15 : 30;
     u.coins += prize;
-    u.pass.xp += 30;
-    track(u, 'tournament', { place: i + 1, games: p.games });
-    hooks.sendUser(p.id, { type: 'tournament_result', id: t.id, name: t.name, place: i + 1, players: list.length, score: p.score, coins: prize, xp: 30 });
+    u.pass.xp += xp;
+    track(u, 'tournament', { place: i + 1, games: p.games, players: list.length });
+    hooks.sendUser(p.id, { type: 'tournament_result', id: t.id, name: t.name, place: i + 1, players: list.length, score: p.score, coins: prize, xp });
   });
-  db.recordTournament({ id: t.id, name: t.name, tc: t.tc, startsAt: t.startsAt, endsAt: t.endsAt, players: list.length, podium: t.podium });
+  if (t.custom) {
+    // Nicht verteilte Münzen gehen an den Veranstalter zurück
+    const rest = (t.prizePool || 0) - paidOut;
+    const creator = db.getUser(t.creatorId);
+    if (creator && rest > 0) {
+      creator.coins += rest;
+      hooks.sendUser(creator.id, { type: 'toast', message: `🏟️ ${t.name}: ${rest} nicht vergebene Münzen zurück an dich` });
+    }
+    db.deleteCustomTournament(t.id);
+  }
+  db.recordTournament({ id: t.id, name: t.name, tc: t.tc, startsAt: t.startsAt, endsAt: t.endsAt, players: list.length, podium: t.podium, custom: !!t.custom, creatorName: t.creatorName || null, private: !!t.private });
   broadcast(t, true);
 }
 
@@ -175,9 +195,19 @@ function publicState(t, userId) {
   const me = t.players.get(userId);
   return {
     id: t.id, name: t.name, tc: t.tc, type: t.type, status: t.status, startsAt: t.startsAt, endsAt: t.endsAt,
-    now: Date.now(), playerCount: t.players.size, podium: t.podium,
+    now: Date.now(), playerCount: t.players.size, podium: t.podium, ...customInfo(t, userId),
     standings: list.slice(0, 50).map((p, i) => ({ rank: i + 1, id: p.id, name: p.name, elo: p.elo, score: p.score, fire: p.streak >= 2, games: p.games, results: p.results.slice(-12), playing: !!p.inGame, paused: p.paused })),
     me: me ? { joined: true, paused: me.paused, score: me.score, rank: list.indexOf(me) + 1, playing: !!me.inGame, fire: me.streak >= 2 } : { joined: false },
+  };
+}
+
+function customInfo(t, userId) {
+  if (!t.custom) return { custom: false, rated: true };
+  const insider = userId === t.creatorId || t.players.has(userId);
+  return {
+    custom: true, rated: t.rated !== false, private: !!t.private, prizePool: t.prizePool || 0,
+    creatorId: t.creatorId, creatorName: t.creatorName, description: t.description || '',
+    code: t.private ? (insider ? t.code : null) : t.code,
   };
 }
 
@@ -186,6 +216,7 @@ function broadcast(t, force = false) {
   const now = Date.now();
   if (!force && now - (lastBroadcast.get(t.id) || 0) < 3000) return;
   lastBroadcast.set(t.id, now);
+  if (force && t.custom && t.status !== 'finished') persist(t);
   for (const p of t.players.values()) hooks.sendUser(p.id, { type: 'tournament', t: publicState(t, p.id) });
   for (const ws of watchers.get(t.id) || []) if (ws.userId && !t.players.has(ws.userId)) hooks.sendWs(ws, { type: 'tournament', t: publicState(t, ws.userId) });
 }
@@ -194,13 +225,15 @@ export function listTournaments(userId) {
   schedule();
   const recent = db.recentTournaments(5);
   return {
-    current: [...tournaments.values()].filter((t) => t.status !== 'finished').sort((a, b) => a.startsAt - b.startsAt).map((t) => ({
+    current: [...tournaments.values()].filter((t) => t.status !== 'finished' && visibleTo(t, userId)).sort((a, b) => a.startsAt - b.startsAt).map((t) => ({
       id: t.id, name: t.name, tc: t.tc, status: t.status, startsAt: t.startsAt, endsAt: t.endsAt, players: t.players.size,
       joined: t.players.has(userId) && !t.players.get(userId).paused,
+      custom: !!t.custom, private: !!t.private, rated: t.rated !== false, prizePool: t.prizePool || 0, creatorName: t.creatorName || null,
+      mine: t.creatorId === userId,
     })),
     finished: [
-      ...[...tournaments.values()].filter((t) => t.status === 'finished').map((t) => ({ id: t.id, name: t.name, tc: t.tc, endsAt: t.endsAt, players: t.players.size, podium: t.podium })),
-      ...recent.filter((r) => !tournaments.has(r.id)),
+      ...[...tournaments.values()].filter((t) => t.status === 'finished' && visibleTo(t, userId)).map((t) => ({ id: t.id, name: t.name, tc: t.tc, endsAt: t.endsAt, players: t.players.size, podium: t.podium, custom: !!t.custom })),
+      ...recent.filter((r) => !tournaments.has(r.id) && !r.private),
     ].slice(0, 6),
     now: Date.now(),
   };
@@ -233,6 +266,27 @@ export function onTournamentMessage(user, ws, msg) {
       broadcast(t, true);
       return true;
     }
+    case 'tournament_create': {
+      try {
+        const nt = createCustom(user, msg);
+        hooks.sendWs(ws, { type: 'tournament_created', id: nt.id, code: nt.code });
+        hooks.sendUser(user.id, { type: 'user_update' });
+        broadcast(nt, true);
+      } catch (e) { hooks.sendWs(ws, { type: 'error', message: e.message }); }
+      return true;
+    }
+    case 'tournament_cancel': {
+      try { cancelCustom(user, t); hooks.sendWs(ws, { type: 'tournament_cancelled', id: msg.id }); hooks.sendUser(user.id, { type: 'user_update' }); }
+      catch (e) { hooks.sendWs(ws, { type: 'error', message: e.message }); }
+      return true;
+    }
+    case 'tournament_code': {
+      const code = String(msg.code || '').trim().toUpperCase();
+      const found = [...tournaments.values()].find((x) => x.code === code && x.status !== 'finished');
+      if (!found) { hooks.sendWs(ws, { type: 'error', message: 'Kein laufendes Turnier mit diesem Code' }); return true; }
+      hooks.sendWs(ws, { type: 'tournament_found', id: found.id });
+      return true;
+    }
     case 'tournament_pause': {
       const p = t?.players.get(user.id);
       if (p) { p.paused = true; broadcast(t, true); }
@@ -240,6 +294,96 @@ export function onTournamentMessage(user, ws, msg) {
     }
   }
   return false;
+}
+
+// ---------- Eigene Turniere ----------
+class TourneyError extends Error {}
+
+function visibleTo(t, userId) {
+  return !t.private || t.creatorId === userId || t.players.has(userId);
+}
+
+function serialize(t) {
+  return {
+    id: t.id, name: t.name, tc: t.tc, type: t.type, startsAt: t.startsAt, endsAt: t.endsAt, custom: true,
+    creatorId: t.creatorId, creatorName: t.creatorName, rated: t.rated, private: t.private, code: t.code,
+    prizePool: t.prizePool, description: t.description,
+    players: [...t.players.values()].map(({ inGame, lastEnd, ...rest }) => rest),
+  };
+}
+function persist(t) { if (t.custom) db.saveCustomTournament(serialize(t)); }
+
+function restoreCustom() {
+  for (const d of db.customTournaments()) {
+    if (tournaments.has(d.id)) continue;
+    const players = new Map(d.players.map((p) => [p.id, { ...p, inGame: false, lastEnd: 0 }]));
+    const now = Date.now();
+    const status = now < d.startsAt ? 'upcoming' : now < d.endsAt ? 'running' : 'ending';
+    tournaments.set(d.id, { ...d, players, games: new Set(), status, podium: null, finishedAt: null });
+  }
+}
+
+function newCode() {
+  for (;;) {
+    const code = crypto.randomBytes(3).toString('hex').toUpperCase();
+    if (![...tournaments.values()].some((t) => t.code === code)) return code;
+  }
+}
+
+export function createCustom(user, o) {
+  const C = CUSTOM_TOURNEY;
+  const name = String(o.name || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 40);
+  if (name.length < 3) throw new TourneyError('Name: mindestens 3 Zeichen');
+  if (!TIME_CONTROLS[o.tc]) throw new TourneyError('Unbekannte Bedenkzeit');
+  const duration = Number(o.duration);
+  if (!C.durations.includes(duration)) throw new TourneyError('Ungültige Dauer');
+  const startIn = Number(o.startIn);
+  if (!C.startIns.includes(startIn)) throw new TourneyError('Ungültige Startzeit');
+  const pool = Math.floor(Number(o.prizePool) || 0);
+  if (pool < 0 || pool > C.maxPool) throw new TourneyError(`Preistopf: 0 bis ${C.maxPool} Münzen`);
+  if (pool > user.coins) throw new TourneyError('Nicht genug Münzen für den Preistopf');
+  const active = [...tournaments.values()].filter((t) => t.custom && t.status !== 'finished');
+  if (active.some((t) => t.creatorId === user.id)) throw new TourneyError('Du hast schon ein offenes Turnier – warte, bis es vorbei ist, oder sag es ab');
+  if (active.length >= C.maxActive) throw new TourneyError('Gerade laufen zu viele eigene Turniere – versuch es später');
+  const now = Date.now();
+  const startsAt = now + startIn * 60_000;
+  const t = {
+    id: 'c' + crypto.randomBytes(5).toString('hex'), key: null, name, tc: o.tc, type: TIME_CONTROLS[o.tc].type,
+    startsAt, endsAt: startsAt + duration * 60_000, status: 'upcoming',
+    players: new Map(), games: new Set(), podium: null, finishedAt: null,
+    custom: true, creatorId: user.id, creatorName: user.name, rated: o.rated !== false, private: !!o.private,
+    code: newCode(), prizePool: pool, description: String(o.description || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 140),
+  };
+  user.coins -= pool;
+  tournaments.set(t.id, t);
+  if (o.join !== false) player(t, user.id);
+  persist(t);
+  db.save();
+  return t;
+}
+
+export function cancelCustom(user, t) {
+  if (!t || !t.custom) throw new TourneyError('Turnier nicht gefunden');
+  if (t.creatorId !== user.id) throw new TourneyError('Nur der Veranstalter kann absagen');
+  if (t.status !== 'upcoming') throw new TourneyError('Das Turnier läuft schon');
+  user.coins += t.prizePool || 0;
+  tournaments.delete(t.id);
+  db.deleteCustomTournament(t.id);
+  for (const p of t.players.values()) if (p.id !== user.id) hooks.sendUser(p.id, { type: 'toast', message: `🏟️ „${t.name}“ wurde abgesagt` });
+  for (const ws of watchers.get(t.id) || []) hooks.sendWs(ws, { type: 'tournament_cancelled', id: t.id });
+  watchers.delete(t.id);
+  db.save();
+}
+
+// Namensänderung in laufenden Turnieren übernehmen
+export function renamePlayer(userId, name) {
+  for (const t of tournaments.values()) {
+    const p = t.players.get(userId);
+    if (p) p.name = name;
+    if (t.creatorId === userId) t.creatorName = name;
+    for (const q of t.podium || []) if (q.id === userId) q.name = name;
+    if (t.custom && t.status !== 'finished') persist(t);
+  }
 }
 
 export function unwatchTournaments(ws) {

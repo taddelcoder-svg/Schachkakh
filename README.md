@@ -44,6 +44,8 @@ Logins halten ein Jahr (gleitend – wer spielt, bleibt angemeldet). Wenn der Se
 | **Arena-Turniere** | Jede halbe Stunde (UTC :00 Blitz 3+0, :30 Bullet 1+0): automatische Paarungen, Sieg 2 / Remis 1, ab 2 Siegen in Folge doppelt 🔥, Preise 300/150/75 Münzen (nur mit Punkten, unter 4 Spielern halbiert) |
 | **Tagesaufgaben** | 3 Aufgaben pro Tag, +50 Münzen wenn alle erledigt; Login-Bonus 10–70 Münzen je nach Serie |
 | **Erfolge** | 25 Erfolge mit Münz-Belohnungen, im Profil sichtbar |
+| **Eigene Turniere** | Arena mit eigenem Namen, Bedenkzeit, Dauer (10–90 min) und Startzeit (1 min–4 h), gewertet oder ungewertet, öffentlich oder privat per Code/Einladungslink; optionaler Preistopf aus eigenen Münzen (50/30/20, Rest zurück). Absagen vor dem Start erstattet den Topf. Übersteht Server-Neustarts |
+| **Konto** | Spielernamen ändern (mit Passwort, höchstens alle 7 Tage; alte Partien zeigen den neuen Namen) und Passwort ändern (andere Geräte werden abgemeldet) |
 | **Emotes** | 8 schnelle Reaktionen in Online- und 4-Spieler-Partien (abschaltbar) |
 
 Belohnungen, Käufe und Wertungen werden **auf dem Server** berechnet.

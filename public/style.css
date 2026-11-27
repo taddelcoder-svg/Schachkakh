@@ -439,3 +439,29 @@ main { max-width: 1240px; margin: 0 auto; padding: 1.3rem 16px 3rem; }
 .tc-grid button b { white-space: nowrap; font-size: .9rem; }
 .topbar .tabs button { padding: .42rem .5rem; font-size: .9rem; }
 @media (min-width: 1300px) { .topbar { flex-wrap: nowrap; } }
+
+/* ===== Update 1.4: eigene Turniere, Konto ===== */
+.tourney-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+.tourney-top > div:first-child { flex: 1; min-width: 260px; }
+.tourney-actions { display: grid; gap: .5rem; min-width: 250px; }
+.tourney-actions .row { flex-wrap: nowrap; }
+.tourney-actions input { text-transform: uppercase; letter-spacing: 2px; }
+.tourney-actions .row .btn { flex: none; }
+.t-badges { display: flex; gap: .3rem; flex-wrap: wrap; font-size: .75rem; }
+.t-badges span { background: var(--bg2); padding: .1rem .45rem; border-radius: 99px; color: var(--muted); }
+.gold-text { color: var(--gold) !important; }
+.custom-box { background: var(--bg2); border-radius: 12px; padding: .7rem .9rem; display: grid; gap: .5rem; }
+.custom-box p { margin: 0; }
+.custom-meta { display: flex; gap: .4rem 1rem; flex-wrap: wrap; font-size: .9rem; }
+.share-row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.share-row .code { font-size: 1.15rem; letter-spacing: 3px; color: var(--gold); }
+.custom-box .btn.danger { justify-self: start; }
+.create-form { display: grid; gap: .65rem; text-align: left; }
+.field { display: grid; gap: .3rem; }
+.field > span { font-size: .85rem; color: var(--muted); font-weight: 600; }
+.seg.wrap { flex-wrap: wrap; }
+.seg.wrap button { flex: 1 0 auto; min-width: 54px; }
+.modal-card:has(.create-form) { width: min(520px, 100%); }
+#profile-actions .btn { flex: none; }
+.tour-table td.results { display: table-cell; }
+.tour-table td.results .res { margin: 1px; }

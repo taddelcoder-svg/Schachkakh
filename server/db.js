@@ -184,6 +184,49 @@ export function recentTournaments(n = 5) {
   return (state.tournaments || []).slice(-n).reverse();
 }
 
+// ---------- Konto: Name & Passwort ----------
+export function renameUser(user, newName) {
+  const old = user.name;
+  user.name = newName;
+  user.nameChangedAt = Date.now();
+  user.nameHistory = [...(user.nameHistory || []), { name: old, until: Date.now() }].slice(-10);
+  // Gespeicherte Partien und Turniere zeigen den neuen Namen
+  for (const g of state.games) {
+    if (g.white?.id === user.id) g.white.name = newName;
+    if (g.black?.id === user.id) g.black.name = newName;
+    for (const p of g.players || []) if (p.id === user.id) p.name = newName;
+  }
+  for (const t of state.tournaments || []) for (const p of t.podium || []) if (p.id === user.id) p.name = newName;
+  for (const t of Object.values(state.customTournaments || {})) {
+    if (t.creatorId === user.id) t.creatorName = newName;
+    for (const p of t.players || []) if (p.id === user.id) p.name = newName;
+  }
+  save();
+  return old;
+}
+
+export function setPassword(user, password, keepToken) {
+  user.salt = crypto.randomBytes(16).toString('hex');
+  user.passHash = hashPassword(password, user.salt);
+  // Alle anderen Geräte abmelden
+  for (const [t, e] of Object.entries(state.tokens)) if (e.userId === user.id && t !== keepToken) delete state.tokens[t];
+  save();
+}
+
+// ---------- Eigene Turniere (überstehen Neustarts, inkl. Preistopf) ----------
+export function customTournaments() {
+  return Object.values(state.customTournaments || {});
+}
+export function saveCustomTournament(t) {
+  state.customTournaments ||= {};
+  state.customTournaments[t.id] = t;
+  save();
+}
+export function deleteCustomTournament(id) {
+  if (state.customTournaments) delete state.customTournaments[id];
+  save();
+}
+
 export function getGame(id) {
   return state.games.find((g) => g.id === id) || null;
 }
